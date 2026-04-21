@@ -1,5 +1,17 @@
 services:
 
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/certs:/etc/nginx/certs
+    restart: unless-stopped
+
   # MQTT 5 Broker
   mosquitto:
     image: eclipse-mosquitto:2
@@ -58,6 +70,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init/postgres:/docker-entrypoint-initdb.d:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin}"]
@@ -86,6 +99,35 @@ services:
       timeout: 10s
       retries: 10
       start_period: 60s
+
+  # Cassandra init (runs CQL schema after Cassandra is healthy)
+  cassandra-init:
+    image: cassandra:5
+    container_name: cassandra-init
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    volumes:
+      - ./init/cassandra/init.cql:/init.cql:ro
+    command: /bin/bash -c "cqlsh cassandra -f /init.cql && echo 'Cassandra schema applied.'"
+    restart: on-failure
+
+  # Restaurant data importer (PG + Elasticsearch)
+  importer:
+    build: ./init/import
+    container_name: importer
+    depends_on:
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./ressources/all_restaurants.jsonl:/data/all_restaurants.jsonl:ro
+    environment:
+      PG_DSN: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-hackmichelin}
+      ES_HOST: http://elasticsearch:9200
+      JSONL_PATH: /data/all_restaurants.jsonl
+    restart: on-failure
 
 volumes:
   mosquitto_data:
