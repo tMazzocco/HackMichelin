@@ -1,2 +1,4 @@
 .env
 ressources/all_restaurants.jsonl
+
+*/target/
