@@ -1,148 +1,170 @@
 # HackMichelin
 
-Michelin restaurant discovery platform built as a microservice architecture.
-Data covers the full Michelin guide dataset (PostgreSQL + Elasticsearch).
-Media (photos, videos) is served as HLS streams.
+Google Maps meets Instagram for the Michelin Guide.
+Explore restaurants on a map, collect stars by visiting them, post photo/video reviews, follow food influencers.
 
 ---
 
-## Architecture Overview
+## Architecture
 
 ```
 Browser / Mobile App
         │
         ▼
-    Nginx :80/:443          ← reverse proxy / gateway
+    Nginx :80            ← reverse proxy / API gateway (cloudflared tunnel in prod)
         │
         ├── /api/maps/      → MapsDataService  :3000  (Rust / Axum)
         ├── /api/download/  → DownloadService  :3001  (Rust / Axum)
-        ├── /api/login/     → LoginService     :????  (TBD)
-        ├── /api/users/     → UserService      :????  (TBD)
-        ├── /api/search/    → SearchService    :????  (TBD)
-        ├── /api/upload/    → UploadService    :????  (TBD)
-        ├── /api/comments/  → CommentService   :????  (TBD)
-        ├── /api/likes/     → LikeService      :????  (TBD)
-        └── /api/stats/     → StatsService     :????  (TBD)
-
-Infrastructure:
-  PostgreSQL    :5432   — restaurant master data
-  Elasticsearch :9200   — full-text & faceted search
-  Cassandra     :9042   — high-write data (comments, likes, stats)
-  Mosquitto     :1883   — MQTT broker (service-to-service events)
-  Kibana        :5601   — Elasticsearch UI
+        ├── /api/auth/      → LoginService     :3002  (Rust / Axum)
+        ├── /api/users/     → UserService      :3003  (Rust / Axum)
+        ├── /api/posts/     → PostService      :3004  (Rust / Axum)
+        ├── /api/feed/      → FeedService      :3005  (Rust / Axum)
+        ├── /api/search/    → SearchService    :3006  (Rust / Axum)
+        ├── /api/upload/    → UploadService    :3007  (Rust / Axum)
+        ├── /api/comments/  → CommentService   :3008  (Rust / Axum)
+        ├── /api/likes/     → LikeService      :3009  (Rust / Axum)
+        └── /api/stats/     → StatsService     :3010  (Rust / Axum)
 ```
+
+### MQTT Event Bus (Mosquitto :1883)
+
+| Publisher    | Topic            | Subscribers                |
+|--------------|------------------|----------------------------|
+| LoginService | user.registered  | SearchService              |
+| UserService  | user.updated     | SearchService              |
+| PostService  | post.created     | FeedService, StatsService  |
+| PostService  | post.deleted     | StatsService               |
+
+### Database Ownership
+
+| Store         | Port  | Owned by                                                      |
+|---------------|-------|---------------------------------------------------------------|
+| PostgreSQL    | 5432  | LoginService, UserService, UploadService, StatsService, MapsDataService (read) |
+| Cassandra     | 9042  | PostService, FeedService, CommentService, LikeService, UserService (follows) |
+| Elasticsearch | 9200  | SearchService (read/write via MQTT), Importer (seed)          |
 
 ---
 
 ## Services
 
-### MapsDataService (`MapsDataService/`)
-Language: Rust (Tokio + Axum)  |  Port: 3000
+### MapsDataService — `:3000`
+Geographic restaurant queries. Returns nearby restaurants with Haversine distance and live experience stats (good_pct from StatsService).
 
-Geographic restaurant queries against PostgreSQL.
-Exposes an HTTP API and an MQTT request/reply interface.
+```
+GET /api/maps/health
+GET /api/maps/restaurants/nearby?lat=&lng=&radius=&limit=
+GET /api/maps/restaurants/:id
+```
 
-Key endpoints:
-- `GET /health`
-- `GET /restaurants/nearby?lat=&lng=&radius=&limit=`
-- `GET /restaurants/:id`
+### DownloadService — `:3001`
+Serves media files from `./media/` as HLS v3 VOD playlists with full Range-request support for video seeking.
 
-Via nginx: `GET /api/maps/restaurants/nearby?...`
+```
+GET /api/download/health
+GET /api/download/playlist.m3u8[?files=a.mp4,b.jpg]
+GET /api/download/files/:name
+```
 
-See [MapsDataService/README](MapsDataService/README) for full API docs and MQTT interface.
+### LoginService — `:3002`
+JWT authentication. Issues 15-min access tokens + 30-day refresh tokens. Publishes `user.registered` on signup.
 
----
+```
+POST /api/auth/register    { username, email, password }
+POST /api/auth/login       { email, password }
+POST /api/auth/refresh     { refresh_token }
+POST /api/auth/logout      { refresh_token }
+```
 
-### DownloadService (`DownloadService/`)
-Language: Rust (Tokio + Axum)  |  Port: 3001
+### UserService — `:3003`
+Profile management, social graph (follow/unfollow), and star collection (honor-system check-in to any Michelin guide entry).
 
-Serves media files (photos & videos) from the `media/` folder as HLS v3 VOD playlists (.m3u8) with full Range-request support for video seeking.
+```
+GET    /api/users/:id
+PATCH  /api/users/me                          🔒
+POST   /api/users/:id/follow                  🔒
+DELETE /api/users/:id/follow                  🔒
+GET    /api/users/:id/followers
+GET    /api/users/:id/following
+POST   /api/users/me/stars/:restaurant_id     🔒
+DELETE /api/users/me/stars/:restaurant_id     🔒
+GET    /api/users/:id/stars
+```
 
-Key endpoints:
-- `GET /health`
-- `GET /playlist.m3u8[?files=name1.mp4,name2.jpg]`  — HLS manifest
-- `GET /files/:name`                                  — raw media file
+### PostService — `:3004`
+Create and retrieve photo/video posts tagged to restaurants. Publishes MQTT events consumed by FeedService and StatsService.
 
-Via nginx: `GET /api/download/playlist.m3u8`
+```
+POST   /api/posts                             🔒  { media_id, restaurant_id?, caption, rating }
+GET    /api/posts/:id
+DELETE /api/posts/:id                         🔒
+GET    /api/posts/user/:user_id[?before=&limit=]
+GET    /api/posts/restaurant/:restaurant_id[?before=&limit=]
+```
 
-Frontend players: use **hls.js** (all browsers) or native HLS (Safari only).
+`rating` is `"GOOD"` or `"BAD"` (binary Steam-style review).
 
-See [DownloadService/README](DownloadService/README) for full API docs and frontend integration.
+### FeedService — `:3005`
+Personal home feed (fan-out on write via MQTT). Subscribes to `post.created` and writes one row per follower into Cassandra `user_feed`.
 
----
+```
+GET /api/feed[?before=&limit=]    🔒
+```
 
-### LoginService (`LoginService/`)
-Status: **TBD**
+### SearchService — `:3006`
+Full-text and faceted search backed by Elasticsearch. Subscribes to `user.registered` and `user.updated` to keep the users index current.
 
-Handles user authentication (registration, login, token issuance).
+```
+GET /api/search/restaurants?q=&city=&country=&cuisine=&award=&lat=&lng=&radius=
+GET /api/search/users?q=
+```
 
----
+### UploadService — `:3007`
+Accepts multipart file uploads (max 200 MB). Writes to `./media/`, auto-generates video thumbnails via ffmpeg if none provided, stores metadata in PostgreSQL.
 
-### UserService (`UserService/`)
-Status: **TBD**
+```
+POST /api/upload    🔒   multipart/form-data  fields: file, thumbnail? (optional)
+                         → { media_id, url, thumbnail_url, media_type }
+```
 
-User profile management (read/update profile, preferences).
+### CommentService — `:3008`
+Thread-order comments on posts, backed by Cassandra.
 
----
+```
+POST   /api/comments/post/:post_id            🔒  { body }
+GET    /api/comments/post/:post_id[?after=&limit=]
+DELETE /api/comments/:post_id/:comment_id     🔒
+```
 
-### SearchService (`SearchService/`)
-Status: **TBD**
+### LikeService — `:3009`
+Like/unlike posts with atomic Cassandra counters.
 
-Full-text and faceted restaurant search backed by Elasticsearch.
+```
+POST   /api/likes/post/:post_id     🔒
+DELETE /api/likes/post/:post_id     🔒
+GET    /api/likes/post/:post_id/count
+GET    /api/likes/post/:post_id[?limit=]
+```
 
----
+### StatsService — `:3010`
+Aggregated good/bad experience per restaurant. Subscribes to MQTT `post.created`/`post.deleted` and upserts `restaurant_stats` in PostgreSQL. MapsDataService JOINs this table.
 
-### UploadService (`UploadService/`)
-Status: **TBD**
-
-Media file ingestion — accepts uploads and stores them in the `media/` folder for DownloadService to serve.
-
----
-
-### CommentService (`CommentService/`)
-Status: **TBD**
-
-Restaurant comments stored in Cassandra (high write throughput).
-
----
-
-### LikeService (`LikeService/`)
-Status: **TBD**
-
-Restaurant like/bookmark functionality stored in Cassandra.
-
----
-
-### StatsService (`StatsService/`)
-Status: **TBD**
-
-Aggregated statistics (view counts, popularity scores) stored in Cassandra.
-
----
-
-### Frontend (`mich-front/`)
-Stack: React + TypeScript + Vite (Tauri wrapper available for desktop)
-
-Development:
-```powershell
-cd mich-front
-npm install
-npm run dev
+```
+GET /api/stats/restaurants/:id    → { total_posts, good_posts, bad_posts, good_pct }
 ```
 
 ---
 
 ## Infrastructure
 
-| Service       | Image                          | Port(s)       | Purpose                          |
-|---------------|--------------------------------|---------------|----------------------------------|
-| nginx         | nginx:alpine                   | 80, 443       | Reverse proxy / API gateway      |
-| postgres      | postgres:16-alpine             | 5432          | Restaurant master data           |
-| elasticsearch | elasticsearch:8.13.0           | 9200, 9300    | Full-text search                 |
-| kibana        | kibana:8.13.0                  | 5601          | Elasticsearch UI                 |
-| cassandra     | cassandra:5                    | 9042          | Comments, likes, stats           |
-| mosquitto     | eclipse-mosquitto:2            | 1883, 9001    | MQTT broker                      |
-| importer      | custom (init/import)           | —             | Seeds PG + ES from JSONL on boot |
+| Container     | Image                          | Port(s)    | Purpose                               |
+|---------------|--------------------------------|------------|---------------------------------------|
+| nginx         | nginx:alpine                   | 80, 443    | Reverse proxy / API gateway           |
+| postgres      | postgres:16-alpine             | 5432       | Users, restaurants, media, stats      |
+| elasticsearch | elasticsearch:8.13.0           | 9200, 9300 | Full-text restaurant + user search    |
+| kibana        | kibana:8.13.0                  | 5601       | Elasticsearch UI                      |
+| cassandra     | cassandra:5                    | 9042       | Posts, feed, likes, comments, follows |
+| mosquitto     | eclipse-mosquitto:2            | 1883, 9001 | MQTT event bus                        |
+| importer      | custom                         | —          | Seeds PG + ES from JSONL on boot      |
 
 ---
 
@@ -150,61 +172,67 @@ npm run dev
 
 ### Prerequisites
 - Docker Desktop
-- Rust (for local development of Rust services)
-- Node.js 18+ (for frontend)
+- Rust 1.78+ (local service dev)
+- ffmpeg (UploadService thumbnail generation, or use Docker)
 
-### Start all infrastructure + implemented services
+### Start infrastructure
 
-```powershell
-# From project root
-docker compose up -d
+```bash
+docker compose up -d postgres cassandra elasticsearch mosquitto kibana
+# Wait ~60 s for Cassandra to initialise, then:
+docker compose up -d cassandra-init importer nginx
 ```
 
-> Note: `download_service` is commented out in docker-compose.yml by default.
-> Uncomment the `download_service` block to enable it.
+### Run services locally
 
-### Start DownloadService locally
+```bash
+# Copy and fill in the env file for the service you want to run
+cp .env.exemple .env
 
-```powershell
-cd DownloadService
-cargo run
-# Service available at http://localhost:3001
+# Example: MapsDataService
+cd MapsDataService && cargo run
+
+# Example: LoginService
+cd LoginService && cargo run
 ```
 
-### Start MapsDataService locally
+Each service reads env vars from its directory's `.env` or from the shell environment. See `.env.exemple` for all variables.
 
-```powershell
-# Requires PostgreSQL and Mosquitto running
-docker compose up postgres mosquitto -d
+### Run a service with Docker (once Dockerfile exists)
 
-cd MapsDataService
-cargo run
-# Service available at http://localhost:3000
+```bash
+docker compose up -d login_service
 ```
-
-### Seed data
-
-The `importer` container runs automatically on `docker compose up` and loads `ressources/all_restaurants.jsonl` into PostgreSQL and Elasticsearch.
 
 ---
 
-## Environment Variables
+## Data Seeding
 
-Copy `.env.example` to `.env` in each service folder and adjust as needed.
-
-| Variable          | Default         | Description                     |
-|-------------------|-----------------|---------------------------------|
-| POSTGRES_USER     | admin           | PostgreSQL username             |
-| POSTGRES_PASSWORD | changeme        | PostgreSQL password             |
-| POSTGRES_DB       | hackmichelin    | PostgreSQL database name        |
-
-See each service README for service-specific variables.
+The `importer` container runs automatically and loads `ressources/all_restaurants.jsonl` into PostgreSQL and Elasticsearch. It also creates the `users` Elasticsearch index. Run once; skips if data already present.
 
 ---
 
 ## Media Files
 
-Drop media files into the `media/` folder at the project root.
-They are immediately available via DownloadService without rebuilding.
+Drop files into `./media/` at the project root. They are available immediately via DownloadService without rebuilding.
 
-Supported formats: `jpg jpeg png gif webp bmp mp4 ts m4s mov avi mkv webm`
+**Supported:** `jpg jpeg png gif webp bmp mp4 ts m4s mov avi mkv webm`
+
+UploadService writes to `./media/` automatically. DownloadService has read-only access.
+
+---
+
+## Authentication
+
+All `🔒` endpoints require `Authorization: Bearer <jwt>` header.
+
+JWTs are issued by LoginService, validated **independently** in each service using the shared `JWT_SECRET`. There is no round-trip to LoginService on every request.
+
+Token lifetimes: access token 15 min, refresh token 30 days.
+
+---
+
+## Pagination
+
+- **Cassandra-backed endpoints** (feed, posts, comments, likes): cursor-based via `?before=<ISO8601>` (posts) or `?after=<ISO8601>` (comments). Default limit 20, max 100.
+- **PostgreSQL-backed endpoints** (star collections, search): offset-based via `?page=&limit=`.

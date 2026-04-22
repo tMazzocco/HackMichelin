@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs cat *)",
+      "Bash(xargs head *)",
+      "Bash(xargs grep *)"
+    ]
+  }
+}

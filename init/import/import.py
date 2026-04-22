@@ -19,8 +19,9 @@ from elasticsearch import Elasticsearch, helpers
 JSONL_PATH = os.getenv("JSONL_PATH", "/data/all_restaurants.jsonl")
 PG_DSN     = os.getenv("PG_DSN",    "postgresql://admin:changeme@postgres:5432/hackmichelin")
 ES_HOST    = os.getenv("ES_HOST",   "http://elasticsearch:9200")
-ES_INDEX   = "restaurants"
-BATCH_SIZE = 500
+ES_INDEX_RESTAURANTS = "restaurants"
+ES_INDEX_USERS       = "users"
+BATCH_SIZE           = 500
 
 
 # ── Wait helpers ─────────────────────────────────────────────
@@ -49,10 +50,10 @@ def wait_for_es(es, retries=30, delay=5):
     raise RuntimeError("Elasticsearch not ready after retries")
 
 
-# ── Elasticsearch index ──────────────────────────────────────
-def create_es_index(es):
-    if es.indices.exists(index=ES_INDEX):
-        print(f"Index '{ES_INDEX}' already exists, skipping creation.")
+# ── Elasticsearch indexes ─────────────────────────────────────
+def create_es_restaurants_index(es):
+    if es.indices.exists(index=ES_INDEX_RESTAURANTS):
+        print(f"Index '{ES_INDEX_RESTAURANTS}' already exists, skipping creation.")
         return
     mapping = {
         "settings": {"number_of_shards": 1, "number_of_replicas": 0},
@@ -95,8 +96,31 @@ def create_es_index(es):
             }
         },
     }
-    es.indices.create(index=ES_INDEX, body=mapping)
-    print(f"Index '{ES_INDEX}' created.")
+    es.indices.create(index=ES_INDEX_RESTAURANTS, body=mapping)
+    print(f"Index '{ES_INDEX_RESTAURANTS}' created.")
+
+
+def create_es_users_index(es):
+    # Users are indexed by SearchService at runtime (on user.registered MQTT events).
+    # This just ensures the index exists with the correct mapping on startup.
+    if es.indices.exists(index=ES_INDEX_USERS):
+        print(f"Index '{ES_INDEX_USERS}' already exists, skipping creation.")
+        return
+    mapping = {
+        "settings": {"number_of_shards": 1, "number_of_replicas": 0},
+        "mappings": {
+            "properties": {
+                "user_id":         {"type": "keyword"},
+                "username":        {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+                "bio":             {"type": "text"},
+                "avatar_url":      {"type": "keyword", "index": False},
+                "stars_collected": {"type": "integer"},
+                "followers_count": {"type": "integer"},
+            }
+        },
+    }
+    es.indices.create(index=ES_INDEX_USERS, body=mapping)
+    print(f"Index '{ES_INDEX_USERS}' created.")
 
 
 # ── Parse one JSONL line ─────────────────────────────────────
@@ -184,7 +208,7 @@ def parse_restaurant(r):
     if lat is not None and lng is not None:
         es_source["location"] = {"lat": lat, "lon": lng}
 
-    es_doc = {"_index": ES_INDEX, "_id": r.get("objectID"), "_source": es_source}
+    es_doc = {"_index": ES_INDEX_RESTAURANTS, "_id": r.get("objectID"), "_source": es_source}
 
     images = [
         {
@@ -271,7 +295,8 @@ def main():
     wait_for_es(es)
     wait_for_pg(PG_DSN)
 
-    create_es_index(es)
+    create_es_restaurants_index(es)
+    create_es_users_index(es)
 
     conn = psycopg2.connect(PG_DSN)
     cur  = conn.cursor()

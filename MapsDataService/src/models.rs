@@ -30,6 +30,10 @@ pub struct RestaurantNearby {
     pub delivery:             Option<bool>,
     /// Haversine distance in metres from the query point.
     pub distance_meters:      f64,
+    /// Total user posts tagged to this restaurant (0 if none).
+    pub total_posts:          i32,
+    /// Fraction of posts rated GOOD (0.0–1.0, 0.0 if no posts).
+    pub good_pct:             f64,
 }
 
 /// Restaurant row returned for a single get-by-id lookup.
