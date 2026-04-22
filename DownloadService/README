@@ -1,0 +1,103 @@
+# DownloadService
+
+Rust microservice that serves media files (photos & videos) over HTTP and exposes them as an HLS playlist (.m3u8).
+
+## Overview
+
+- Language  : Rust (Tokio + Axum)
+- Port      : 3001
+- Media dir : /media (mounted volume in Docker, ../media locally)
+
+## Endpoints
+
+### GET /health
+Liveness probe. Returns plain text "ok".
+
+### GET /playlist.m3u8
+Returns an HLS v3 VOD playlist containing all media files found in MEDIA_DIR.
+Photos are assigned PHOTO_DURATION seconds each; videos VIDEO_DURATION seconds each.
+
+Supported photo extensions : jpg, jpeg, png, gif, webp, bmp
+Supported video extensions : mp4, ts, m4s, mov, avi, mkv, webm
+
+Query parameter:
+  files=name1.mp4,name2.jpg   (optional) comma-separated list of file names to include.
+                               If omitted, all media files in MEDIA_DIR are returned.
+
+Example:
+  GET /playlist.m3u8
+  GET /playlist.m3u8?files=Sustainable%20Thai%20Cuisine%20at%20Baan%20Tepa.mp4
+
+Response: Content-Type: application/vnd.apple.mpegurl (215 bytes for one entry — this is normal, it is a text manifest not the video itself)
+
+### GET /files/:name
+Serves the raw media file with full Range-request support (required for video seeking).
+
+Example:
+  GET /files/Sustainable%20Thai%20Cuisine%20at%20Baan%20Tepa.mp4
+
+## How HLS playback works
+
+1. Frontend requests GET /playlist.m3u8 → receives the small text manifest.
+2. HLS player reads the manifest and requests each segment (GET /files/:name).
+3. Video is streamed with Range requests, enabling seek/scrub.
+
+The .m3u8 file is intentionally small (text only). This is the expected behaviour.
+
+## Frontend integration
+
+Native HLS is only supported in Safari. For all other browsers use hls.js:
+
+  <video id="video" controls></video>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <script>
+    const src = "http://localhost:3001/playlist.m3u8";
+    const video = document.getElementById("video");
+    if (Hls.isSupported()) {
+      const hls = new Hls();
+      hls.loadSource(src);
+      hls.attachMedia(video);
+    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = src;
+    }
+  </script>
+
+If the frontend runs on a different origin, enable CORS (see Environment Variables below).
+
+## Via nginx gateway
+
+The nginx gateway strips the /api/download prefix and forwards to this service:
+
+  GET http://localhost/api/download/playlist.m3u8
+  GET http://localhost/api/download/playlist.m3u8?files=video.mp4
+  GET http://localhost/api/download/files/video.mp4
+
+## Environment Variables
+
+  HTTP_ADDR       Bind address                         (default: 0.0.0.0:3001)
+  MEDIA_DIR       Absolute path to media folder        (default: /media)
+  FILES_BASE_URL  Segment URL prefix in the playlist   (default: files)
+  PHOTO_DURATION  Seconds assigned to each photo       (default: 5)
+  VIDEO_DURATION  Seconds assigned to each video       (default: 10)
+  RUST_LOG        Log level (info/debug/warn/error)     (default: info)
+
+## Running locally
+
+  cd DownloadService
+  cargo run
+
+Reads ../.env or environment variables. Media files must be placed in ../media/.
+
+## Running with Docker
+
+  docker compose up download_service
+
+The ./media folder at workspace root is mounted read-only at /media inside the container.
+Drop media files in ./media/ and they are immediately available without rebuilding.
+
+## Security
+
+- Path traversal is rejected: file names containing / \ or .. return 400 Bad Request.
+- Unknown file extensions are silently skipped.
+- Missing files are silently skipped (no 404 leak for individual segments).
+- Media volume is mounted read-only (:ro) in Docker.

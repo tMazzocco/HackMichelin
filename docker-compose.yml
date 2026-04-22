@@ -112,6 +112,27 @@ services:
     command: /bin/bash -c "cqlsh cassandra -f /init.cql && echo 'Cassandra schema applied.'"
     restart: on-failure
 
+  # # DownloadService – HLS .m3u8 media delivery
+  # download_service:
+  #   build: ./DownloadService
+  #   container_name: download_service
+  #   environment:
+  #     HTTP_ADDR: "0.0.0.0:3001"
+  #     MEDIA_DIR: /media
+  #     FILES_BASE_URL: files
+  #     PHOTO_DURATION: "5"
+  #     VIDEO_DURATION: "10"
+  #   ports:
+  #     - "3001:3001"
+  #   volumes:
+  #     - ./media:/media:ro
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 3
+
   # Restaurant data importer (PG + Elasticsearch)
   importer:
     build: ./init/import
