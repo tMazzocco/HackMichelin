@@ -1,0 +1,17 @@
+# Tauri desktop app — not needed for web build
+src-tauri/
+
+# Dependencies & build artifacts
+node_modules/
+dist/
+package-lock.json
+
+# Dev / tooling
+.vscode/
+.git/
+.gitignore
+*.md
+
+# OS
+.DS_Store
+Thumbs.db
