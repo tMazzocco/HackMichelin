@@ -1,6 +1,12 @@
 import axios from "axios";
 
-const api = axios.create({ baseURL: "", timeout: 10000 });
+// VITE_BACK_URL points to the Nginx API gateway (e.g. http://localhost:80).
+// When set, axios uses it as the base for every request and the Vite dev proxy
+// is bypassed. When absent (empty string), relative paths are used and the Vite
+// proxy routes each /api/* prefix to the correct microservice port.
+const baseURL = import.meta.env.VITE_BACK_URL ?? "";
+
+const api = axios.create({ baseURL, timeout: 10000 });
 
 api.interceptors.response.use(
   (res) => res,
