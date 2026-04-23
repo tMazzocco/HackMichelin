@@ -12,7 +12,7 @@ pub async fn insert_post(
     username: &str,
     restaurant_id: Option<&str>,
     restaurant_name: Option<&str>,
-    media_id: Uuid,
+    _media_id: Uuid,
     media_type: &str,
     media_url: &str,
     thumbnail_url: Option<&str>,
@@ -21,10 +21,10 @@ pub async fn insert_post(
     created_at: DateTime<Utc>,
 ) -> Result<(), AppError> {
     debug!(post_id = %post_id, user_id = %user_id, "inserting post into hackmichelin.posts");
-    // Canonical lookup table
+    // media_id and rating not present in live DB schema
     session.query(
-        "INSERT INTO hackmichelin.posts (post_id, user_id, username, restaurant_id, restaurant_name, media_id, media_type, media_url, thumbnail_url, caption, rating, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (post_id, user_id, username, restaurant_id, restaurant_name, media_id, media_type, media_url, thumbnail_url, caption, rating, created_at),
+        "INSERT INTO hackmichelin.posts (post_id, user_id, username, restaurant_id, restaurant_name, media_type, media_url, thumbnail_url, caption, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (post_id, user_id, username, restaurant_id, restaurant_name, media_type, media_url, thumbnail_url, caption, created_at),
     ).await.map_err(|e| { error!(post_id = %post_id, error = %e, "failed to insert into hackmichelin.posts"); AppError::Cassandra(e.to_string()) })?;
 
     debug!(post_id = %post_id, user_id = %user_id, "inserting post into hackmichelin.user_posts");
@@ -48,25 +48,25 @@ pub async fn insert_post(
 pub async fn get_post(session: &Arc<scylla::Session>, post_id: Uuid) -> Result<Option<Post>, AppError> {
     debug!(post_id = %post_id, "querying hackmichelin.posts by post_id");
     let result = session.query(
-        "SELECT post_id, user_id, restaurant_id, media_id, media_type, media_url, thumbnail_url, caption, rating, created_at FROM hackmichelin.posts WHERE post_id = ?",
+        "SELECT post_id, user_id, username, restaurant_id, restaurant_name, media_type, media_url, thumbnail_url, caption, created_at FROM hackmichelin.posts WHERE post_id = ? ALLOW FILTERING",
         (post_id,),
     ).await.map_err(|e| { error!(post_id = %post_id, error = %e, "failed to query hackmichelin.posts"); AppError::Cassandra(e.to_string()) })?;
 
     if let Some(rows) = result.rows {
-        type Row = (Uuid, Option<Uuid>, Option<String>, Option<Uuid>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<DateTime<Utc>>);
-        if let Some(Ok((pid, uid, rid, mid, mtype, murl, turl, cap, rat, cat))) = rows.into_typed::<Row>().next() {
+        type Row = (Uuid, Option<Uuid>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<DateTime<Utc>>);
+        if let Some(Ok((pid, uid, uname, rid, rname, mtype, murl, turl, cap, cat))) = rows.into_typed::<Row>().next() {
             return Ok(Some(Post {
                 post_id: pid,
                 user_id: uid,
-                username: None,
+                username: uname,
                 restaurant_id: rid,
-                restaurant_name: None,
-                media_id: mid,
+                restaurant_name: rname,
+                media_id: None,
                 media_type: mtype,
                 media_url: murl,
                 thumbnail_url: turl,
                 caption: cap,
-                rating: rat,
+                rating: None,
                 created_at: cat,
             }));
         }
@@ -82,7 +82,7 @@ pub async fn delete_post(
     restaurant_id: Option<&str>,
 ) -> Result<(), AppError> {
     debug!(post_id = %post_id, user_id = %user_id, "deleting post from cassandra");
-    session.query("DELETE FROM hackmichelin.posts WHERE post_id = ?", (post_id,))
+    session.query("DELETE FROM hackmichelin.posts WHERE user_id = ? AND created_at = ? AND post_id = ?", (user_id, created_at, post_id))
         .await.map_err(|e| { error!(post_id = %post_id, error = %e, "failed to delete from hackmichelin.posts"); AppError::Cassandra(e.to_string()) })?;
     session.query(
         "DELETE FROM hackmichelin.user_posts WHERE user_id = ? AND created_at = ? AND post_id = ?",
@@ -126,24 +126,24 @@ pub async fn list_user_posts(
 }
 
 pub async fn get_random_posts(session: &Arc<scylla::Session>, count: usize) -> Result<Vec<Post>, AppError> {
-    type Row = (Uuid, Option<Uuid>, Option<String>, Option<Uuid>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<DateTime<Utc>>);
+    type Row = (Uuid, Option<Uuid>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<DateTime<Utc>>);
 
     let fetch = (count * 10).max(50) as i32;
     debug!(count = count, fetch_limit = fetch, "querying random posts from hackmichelin.posts");
     let result = session.query(
-        "SELECT post_id, user_id, restaurant_id, media_id, media_type, media_url, thumbnail_url, caption, rating, created_at FROM hackmichelin.posts LIMIT ?",
+        "SELECT post_id, user_id, username, restaurant_id, restaurant_name, media_type, media_url, thumbnail_url, caption, created_at FROM hackmichelin.posts LIMIT ?",
         (fetch,),
     ).await.map_err(|e| { error!(error = %e, query = "SELECT ... FROM hackmichelin.posts LIMIT ?", "get_random_posts query failed"); AppError::Cassandra(e.to_string()) })?;
 
     let mut posts: Vec<Post> = vec![];
     if let Some(rows) = result.rows {
         for row in rows.into_typed::<Row>() {
-            if let Ok((pid, uid, rid, mid, mtype, murl, turl, cap, rat, cat)) = row {
+            if let Ok((pid, uid, uname, rid, rname, mtype, murl, turl, cap, cat)) = row {
                 posts.push(Post {
-                    post_id: pid, user_id: uid, username: None,
-                    restaurant_id: rid, restaurant_name: None,
-                    media_id: mid, media_type: mtype, media_url: murl,
-                    thumbnail_url: turl, caption: cap, rating: rat, created_at: cat,
+                    post_id: pid, user_id: uid, username: uname,
+                    restaurant_id: rid, restaurant_name: rname,
+                    media_id: None, media_type: mtype, media_url: murl,
+                    thumbnail_url: turl, caption: cap, rating: None, created_at: cat,
                 });
             }
         }
