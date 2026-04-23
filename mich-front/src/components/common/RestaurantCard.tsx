@@ -13,7 +13,7 @@ export default function RestaurantCard({ restaurant }: Props) {
   return (
     <Link
       to={`/restaurant/${restaurant.id}`}
-      className="flex-shrink-0 w-56 rounded-2xl overflow-hidden bg-dark shadow-lg"
+      className="flex-shrink-0 w-56 rounded-2xl overflow-hidden bg-background shadow-lg border border-black/5"
     >
       <div className="relative h-36">
         <img src={img} alt={restaurant.name} className="w-full h-full object-cover" />
@@ -24,11 +24,11 @@ export default function RestaurantCard({ restaurant }: Props) {
         )}
       </div>
       <div className="p-3">
-        <p className="text-white font-semibold text-sm leading-tight line-clamp-1">
+        <p className="text-text font-semibold text-sm leading-tight line-clamp-1">
           {restaurant.name}
         </p>
         {restaurant.city && (
-          <p className="text-white/50 text-xs mt-0.5 flex items-center gap-1">
+          <p className="text-text/50 text-xs mt-0.5 flex items-center gap-1">
             <MapPin size={10} />
             {restaurant.city}
           </p>

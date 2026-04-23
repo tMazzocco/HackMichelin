@@ -7,6 +7,7 @@ import ResizableSplit from "../components/layout/ResizableSplit";
 import RestaurantCard from "../components/common/RestaurantCard";
 import ArticleCard from "../components/common/ArticleCard";
 import LoadingSpinner from "../components/common/LoadingSpinner";
+import ExperiencesTriptych from "../components/home/ExperiencesTriptych";
 import { articles } from "../data/articles";
 
 export default function HomePage() {
@@ -51,30 +52,15 @@ export default function HomePage() {
         )}
       </section>
 
-      {/* Shorts teaser */}
+      {/* Experiences triptych */}
       <section className="mt-6 px-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-base">Experiences</h2>
           <Link to="/shorts" className="text-primary text-sm flex items-center gap-0.5">
-            Watch <ChevronRight size={14} />
+            See all <ChevronRight size={14} />
           </Link>
         </div>
-        <Link
-          to="/shorts"
-          className="block rounded-2xl overflow-hidden relative h-40 bg-dark shadow-lg"
-        >
-          <img
-            src="https://picsum.photos/seed/michelin-shorts/800/400"
-            alt="Shorts"
-            className="w-full h-full object-cover opacity-60"
-          />
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
-            <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur flex items-center justify-center mb-2">
-              <span className="text-2xl">▶</span>
-            </div>
-            <p className="text-sm font-semibold">Discover restaurant moments</p>
-          </div>
-        </Link>
+        <ExperiencesTriptych />
       </section>
 
       {/* Articles */}

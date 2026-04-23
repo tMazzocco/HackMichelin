@@ -25,6 +25,11 @@ function restaurantCoverPost(restaurant: Restaurant): Post {
 }
 // ---------------------------------------------------------------------------
 
+export async function getRandomPosts(limit = 3): Promise<Post[]> {
+  const res = await api.get("/api/posts/random", { params: { limit } });
+  return (res.data as PostsResponse).data ?? res.data;
+}
+
 export async function getRestaurantPosts(
   restaurantId: string,
   limit = 10,
