@@ -2,10 +2,10 @@
 -- HackMichelin - PostgreSQL Schema
 --
 -- Service ownership:
---   LoginService   → users (write), refresh_tokens
---   UserService    → users (counters), user_star_collections
---   UploadService  → media
---   StatsService   → restaurant_stats (write via MQTT events)
+--   LoginService    → users (write), refresh_tokens
+--   UserService     → users (counters), user_star_collections
+--   UploadService   → media
+--   StatsService    → restaurant_stats (write via MQTT events)
 --   MapsDataService → restaurants, restaurant_stats (read + JOIN)
 --
 -- Social layer (posts, likes, comments, feed, follows) → Cassandra
@@ -31,48 +31,91 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at      TIMESTAMPTZ  DEFAULT NOW()
 );
 
+-- ─── COUNTRIES ────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS countries (
+    id   SERIAL       PRIMARY KEY,
+    code VARCHAR(10)  UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL
+);
+
+-- ─── CITIES ───────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS cities (
+    id          SERIAL       PRIMARY KEY,
+    name        VARCHAR(100) NOT NULL,
+    region_name VARCHAR(150),
+    area_name   VARCHAR(150),
+    country_id  INTEGER      NOT NULL REFERENCES countries(id),
+    UNIQUE (name, country_id)
+);
+
+-- ─── MICHELIN AWARDS ──────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS michelin_awards (
+    id             SERIAL      PRIMARY KEY,
+    michelin_award VARCHAR(50) UNIQUE NOT NULL
+);
+
+-- ─── CUISINE TYPES ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS type_cuisines (
+    code  VARCHAR(50)  PRIMARY KEY,
+    label VARCHAR(100)
+);
+
+-- ─── PRICE CATEGORIES ─────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS price_categories (
+    code  VARCHAR(20)  PRIMARY KEY,
+    label VARCHAR(100)
+);
+
 -- ─── RESTAURANTS ──────────────────────────────────────────────────────────────
 -- Official Michelin guide data. Populated by the importer, read-only after that.
 -- Every entry is collectable regardless of award type (starred, green star,
 -- bib gourmand, or any other Michelin distinction present in the dataset).
+-- city_id / michelin_award_id replace the previous flat string columns.
 CREATE TABLE IF NOT EXISTS restaurants (
-    id                   VARCHAR(50)  PRIMARY KEY,   -- objectID from Michelin dataset
-    identifier           VARCHAR(50)  UNIQUE,
-    slug                 VARCHAR(255) UNIQUE,
-    name                 VARCHAR(255) NOT NULL,
-    chef                 VARCHAR(255),
-    lat                  DOUBLE PRECISION,
-    lng                  DOUBLE PRECISION,
-    city                 VARCHAR(100),
-    country_code         VARCHAR(10),
-    country_name         VARCHAR(100),
-    region_name          VARCHAR(150),
-    area_name            VARCHAR(150),
-    street               TEXT,
-    postcode             VARCHAR(20),
-    phone                VARCHAR(50),
-    website              TEXT,
-    short_link           TEXT,
-    michelin_award       VARCHAR(50),    -- e.g. 'THREE_STARS', 'TWO_STARS', 'ONE_STAR', null
-    distinction_score    INT,
-    guide_year           INT,
-    green_star           BOOLEAN      DEFAULT FALSE,
-    price_category_code  VARCHAR(20),
-    price_category_label VARCHAR(100),
-    main_image_url       TEXT,
-    main_desc            TEXT,
-    online_booking       BOOLEAN      DEFAULT FALSE,
-    take_away            BOOLEAN      DEFAULT FALSE,
-    delivery             BOOLEAN      DEFAULT FALSE,
-    status               VARCHAR(50),
-    published_date       TIMESTAMPTZ,
-    last_updated         TIMESTAMPTZ
+    id                VARCHAR(50)       PRIMARY KEY,   -- objectID from Michelin dataset
+    identifier        VARCHAR(50)       UNIQUE,
+    slug              VARCHAR(255)      UNIQUE,
+    name              VARCHAR(255)      NOT NULL,
+    chef              VARCHAR(255),
+    latitude          DOUBLE PRECISION,
+    longitude         DOUBLE PRECISION,
+    street            TEXT,
+    postcode          VARCHAR(20),
+    phone             VARCHAR(50),
+    website           TEXT,
+    short_link        TEXT,
+    distinction_score INT,
+    guide_year        INT,
+    green_star        BOOLEAN           DEFAULT FALSE,
+    main_image_url    TEXT,
+    main_desc         TEXT,
+    online_booking    BOOLEAN           DEFAULT FALSE,
+    take_away         BOOLEAN           DEFAULT FALSE,
+    delivery          BOOLEAN           DEFAULT FALSE,
+    status            VARCHAR(50),
+    published_date    TIMESTAMPTZ,
+    last_updated      TIMESTAMPTZ,
+    michelin_award_id INTEGER           REFERENCES michelin_awards(id),
+    city_id           INTEGER           NOT NULL REFERENCES cities(id)
 );
-CREATE INDEX IF NOT EXISTS restaurants_city_idx           ON restaurants(city);
-CREATE INDEX IF NOT EXISTS restaurants_country_idx        ON restaurants(country_code);
-CREATE INDEX IF NOT EXISTS restaurants_michelin_award_idx ON restaurants(michelin_award);
-CREATE INDEX IF NOT EXISTS restaurants_guide_year_idx     ON restaurants(guide_year);
-CREATE INDEX IF NOT EXISTS restaurants_green_star_idx     ON restaurants(green_star) WHERE green_star = TRUE;
+CREATE INDEX IF NOT EXISTS restaurants_city_idx        ON restaurants(city_id);
+CREATE INDEX IF NOT EXISTS restaurants_award_idx       ON restaurants(michelin_award_id);
+CREATE INDEX IF NOT EXISTS restaurants_guide_year_idx  ON restaurants(guide_year);
+CREATE INDEX IF NOT EXISTS restaurants_green_star_idx  ON restaurants(green_star) WHERE green_star = TRUE;
+
+-- ─── SERVING (restaurant ↔ cuisine type) ──────────────────────────────────────
+CREATE TABLE IF NOT EXISTS serving (
+    restaurant_id      VARCHAR(50) REFERENCES restaurants(id) ON DELETE CASCADE,
+    type_cuisines_code VARCHAR(50) REFERENCES type_cuisines(code),
+    PRIMARY KEY (restaurant_id, type_cuisines_code)
+);
+
+-- ─── COSTING (restaurant ↔ price category) ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS costing (
+    restaurant_id         VARCHAR(50) REFERENCES restaurants(id) ON DELETE CASCADE,
+    price_categories_code VARCHAR(20) REFERENCES price_categories(code),
+    PRIMARY KEY (restaurant_id, price_categories_code)
+);
 
 -- ─── RESTAURANT IMAGES ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS restaurant_images (
@@ -87,41 +130,31 @@ CREATE TABLE IF NOT EXISTS restaurant_images (
 );
 CREATE INDEX IF NOT EXISTS restaurant_images_restaurant_idx ON restaurant_images(restaurant_id);
 
--- ─── RESTAURANT CUISINES ──────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS restaurant_cuisines (
-    restaurant_id VARCHAR(50) REFERENCES restaurants(id) ON DELETE CASCADE,
-    code          VARCHAR(50),
-    label         VARCHAR(100),
-    slug          VARCHAR(100),
-    PRIMARY KEY (restaurant_id, code)
-);
-
 -- ─── MEDIA ────────────────────────────────────────────────────────────────────
 -- File-level metadata only. Owned exclusively by UploadService.
 -- The social layer (caption, restaurant tag, rating) lives in Cassandra posts,
 -- not here. This table is purely about what was stored on disk.
 --
 -- thumbnail_url: for photos → null (not needed, photo is its own thumbnail).
---                for videos → auto-generated by ffmpeg at upload time, or
---                             replaced with a user-provided custom thumbnail.
+--                for videos → auto-generated by ffmpeg at upload time.
 -- url is /api/download/files/{filename}, computed by UploadService on write.
 CREATE TABLE IF NOT EXISTS media (
     id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id       UUID         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     media_type    VARCHAR(10)  NOT NULL CHECK (media_type IN ('photo', 'video')),
     filename      VARCHAR(255) NOT NULL,
-    storage_path  TEXT         NOT NULL,    -- absolute path on disk: /media/{uuid}.{ext}
-    url           TEXT         NOT NULL,    -- /api/download/files/{filename}
-    thumbnail_url TEXT,                     -- /api/download/files/{thumb_filename}
+    storage_path  TEXT         NOT NULL,
+    url           TEXT         NOT NULL,
+    thumbnail_url TEXT,
     mime_type     VARCHAR(100),
     size_bytes    BIGINT,
     width         INT,
     height        INT,
-    duration_sec  FLOAT,                    -- seconds; null for photos
+    duration_sec  FLOAT,
     created_at    TIMESTAMPTZ  DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS media_user_idx  ON media(user_id);
-CREATE INDEX IF NOT EXISTS media_type_idx  ON media(media_type);
+CREATE INDEX IF NOT EXISTS media_user_idx ON media(user_id);
+CREATE INDEX IF NOT EXISTS media_type_idx ON media(media_type);
 
 -- ─── REFRESH TOKENS ───────────────────────────────────────────────────────────
 -- LoginService: refresh token store for JWT rotation.
@@ -138,17 +171,16 @@ CREATE INDEX IF NOT EXISTS refresh_tokens_user_idx ON refresh_tokens(user_id);
 
 -- ─── USER STAR COLLECTIONS ────────────────────────────────────────────────────
 -- UserService: tracks which Michelin guide entries a user has visited.
--- Honor system — no geolocation check required.
 -- Recognition metadata is snapshotted at collection time so a user's collection
 -- stays accurate even if the guide later changes or removes a restaurant's award.
 -- PRIMARY KEY prevents collecting the same restaurant twice.
 CREATE TABLE IF NOT EXISTS user_star_collections (
-    user_id           UUID         REFERENCES users(id)       ON DELETE CASCADE,
-    restaurant_id     VARCHAR(50)  REFERENCES restaurants(id) ON DELETE CASCADE,
-    collected_at      TIMESTAMPTZ  DEFAULT NOW(),
+    user_id           UUID        REFERENCES users(id)       ON DELETE CASCADE,
+    restaurant_id     VARCHAR(50) REFERENCES restaurants(id) ON DELETE CASCADE,
+    collected_at      TIMESTAMPTZ DEFAULT NOW(),
     -- Snapshot of the restaurant's Michelin recognition at time of collection
-    michelin_award    VARCHAR(50),      -- null if the entry is not a starred restaurant
-    green_star        BOOLEAN      DEFAULT FALSE,
+    michelin_award    VARCHAR(50),
+    green_star        BOOLEAN     DEFAULT FALSE,
     distinction_score INT,
     PRIMARY KEY (user_id, restaurant_id)
 );

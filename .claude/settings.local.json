@@ -4,7 +4,8 @@
       "Bash(xargs cat *)",
       "Bash(xargs head *)",
       "Bash(xargs grep *)",
-      "Read(//c/Users/Theo/.cargo/bin/**)"
+      "Read(//c/Users/Theo/.cargo/bin/**)",
+      "Bash(chmod +x c:/Users/t.mazzocco/Desktop/ESGI/first_year/HackMichelin/start.sh c:/Users/t.mazzocco/Desktop/ESGI/first_year/HackMichelin/stop.sh)"
     ]
   }
 }

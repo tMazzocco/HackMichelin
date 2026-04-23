@@ -1,0 +1,137 @@
+# LikeService
+
+Rust microservice for post likes. Uses Cassandra lightweight transactions to prevent duplicate likes and a dedicated Cassandra counter table for atomic like counts.
+
+---
+
+## Architecture
+
+```
+Client
+  │
+  ▼
+Nginx ──HTTP──▶ LikeService :3009
+                      │
+                  Cassandra
+            (post_likes, post_likes_count)
+```
+
+---
+
+## HTTP Endpoints
+
+All endpoints are prefixed `/api/likes/` by Nginx.
+
+---
+
+### `POST /likes/post/:post_id` 🔒
+
+Like a post. Idempotent — uses `INSERT IF NOT EXISTS` (Cassandra LWT) to prevent duplicate likes.
+
+**Response `200`:** `{ "message": "liked" }`
+
+**Errors:**
+
+| Code | Reason |
+|------|--------|
+| 409  | Already liked |
+
+---
+
+### `DELETE /likes/post/:post_id` 🔒
+
+Unlike a post.
+
+**Response `200`:** `{ "message": "unliked" }`
+
+---
+
+### `GET /likes/post/:post_id/count`
+
+Return the total like count for a post. No authentication required.
+
+**Response `200`:**
+```json
+{ "post_id": "<uuid>", "likes": 42 }
+```
+
+---
+
+### `GET /likes/post/:post_id`
+
+List users who liked the post. No authentication required.
+
+**Query parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `limit`   | 20      | Max results (max 100) |
+
+**Response `200`:**
+```json
+[
+  { "user_id": "<uuid>", "username": "alice", "liked_at": "2024-03-10T18:22:00Z" }
+]
+```
+
+---
+
+## Cassandra Tables
+
+### `post_likes`
+Partition key: `post_id` — "who liked this post?" is a single partition read.
+Clustering: `user_id` — enables the existence check without a full scan.
+
+```
+post_id  uuid  (partition)
+user_id  uuid  (cluster)
+username text
+liked_at timestamp
+```
+
+### `post_likes_count`
+Separate counter table (Cassandra counters must be in their own table).
+LikeService increments on like and decrements on unlike atomically.
+
+```
+post_id  uuid     (PK)
+likes    counter
+```
+
+---
+
+## Configuration
+
+```env
+CASSANDRA_NODES=localhost:9042
+HTTP_ADDR=0.0.0.0:3009
+JWT_SECRET=changeme
+RUST_LOG=info
+```
+
+---
+
+## Local Development
+
+```bash
+cp .env.example .env
+cargo run
+```
+
+---
+
+## Project Structure
+
+```
+LikeService/
+├── src/
+│   ├── main.rs      # Entry point
+│   ├── config.rs    # Env-var config
+│   ├── db.rs        # Cassandra: like, unlike, get_count, list_likes
+│   ├── models.rs    # LikeCount, LikeEntry
+│   ├── auth.rs      # JWT middleware
+│   ├── handlers.rs  # Axum handlers
+│   └── error.rs     # AppError → HTTP response
+├── Cargo.toml
+└── .env.example
+```

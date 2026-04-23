@@ -19,8 +19,10 @@ pub async fn update_profile(pool: &PgPool, user_id: Uuid, bio: Option<String>, a
 pub async fn collect_star(pool: &PgPool, user_id: Uuid, restaurant_id: &str) -> Result<(), AppError> {
     sqlx::query(
         "INSERT INTO user_star_collections (user_id, restaurant_id, collected_at, michelin_award, green_star, distinction_score)
-         SELECT $1, r.id, NOW(), r.michelin_award, r.green_star, r.distinction_score
-         FROM restaurants r WHERE r.id = $2"
+         SELECT $1, r.id, NOW(), ma.michelin_award, r.green_star, r.distinction_score
+         FROM restaurants r
+         LEFT JOIN michelin_awards ma ON ma.id = r.michelin_award_id
+         WHERE r.id = $2"
     ).bind(user_id).bind(restaurant_id).execute(pool).await
     .map_err(|e| match e {
         sqlx::Error::Database(ref dbe) if dbe.code().as_deref() == Some("23505") =>

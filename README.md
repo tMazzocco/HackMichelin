@@ -43,6 +43,21 @@ Browser / Mobile App
 | Cassandra     | 9042  | PostService, FeedService, CommentService, LikeService, UserService (follows) |
 | Elasticsearch | 9200  | SearchService (read/write via MQTT), Importer (seed)          |
 
+### PostgreSQL Schema (normalized)
+
+Restaurant data is stored across normalized lookup tables:
+
+```
+countries ──< cities ──< restaurants >── michelin_awards
+                              │
+                    ┌─────────┴──────────┐
+                 serving              costing
+                    │                    │
+              type_cuisines      price_categories
+```
+
+`restaurants.id` remains the Michelin `objectID` (`VARCHAR(50)`) — used as the cross-store key into Cassandra.
+
 ---
 
 ## Services
@@ -183,20 +198,30 @@ docker compose up -d postgres cassandra elasticsearch mosquitto kibana
 docker compose up -d cassandra-init importer nginx
 ```
 
-### Run services locally
+### Run all services locally (recommended)
 
 ```bash
-# Copy and fill in the env file for the service you want to run
-cp .env.exemple .env
+# Start all 11 services in parallel — logs go to ./logs/<Service>.log
+./start.sh
 
-# Example: MapsDataService
-cd MapsDataService && cargo run
-
-# Example: LoginService
-cd LoginService && cargo run
+# Stop them all
+./stop.sh
 ```
 
-Each service reads env vars from its directory's `.env` or from the shell environment. See `.env.exemple` for all variables.
+Pass `--release` for optimised binaries (slower first compile, faster runtime):
+
+```bash
+./start.sh --release
+```
+
+### Run a single service manually
+
+```bash
+cp .env.exemple .env          # fill in variables once
+cd MapsDataService && cargo run
+```
+
+Each service reads env vars from its directory's `.env` or the shell environment. See `.env.exemple` for all variables.
 
 ### Run a service with Docker (once Dockerfile exists)
 

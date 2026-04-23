@@ -1,0 +1,130 @@
+# CommentService
+
+Rust microservice for threaded comments on posts. Backed by Cassandra with chronological ordering and cursor-based pagination.
+
+---
+
+## Architecture
+
+```
+Client
+  │
+  ▼
+Nginx ──HTTP──▶ CommentService :3008
+                      │
+                  Cassandra
+                (post_comments)
+```
+
+---
+
+## HTTP Endpoints
+
+All endpoints are prefixed `/api/comments/` by Nginx.
+
+---
+
+### `POST /comments/post/:post_id` 🔒
+
+Add a comment to a post.
+
+**Body:**
+```json
+{ "body": "Amazing place, worth every star." }
+```
+
+**Response `201`:**
+```json
+{
+  "comment_id": "<uuid>",
+  "post_id": "<uuid>",
+  "user_id": "<uuid>",
+  "username": "alice",
+  "body": "Amazing place, worth every star.",
+  "created_at": "2024-03-10T18:22:00Z"
+}
+```
+
+---
+
+### `GET /comments/post/:post_id`
+
+List comments for a post in chronological order (oldest first).
+
+**Query parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `after`   | —       | Cursor: ISO 8601 timestamp — return comments after this time |
+| `limit`   | 20      | Max results (max 100) |
+
+**Response `200`:** Array of comment objects.
+
+---
+
+### `DELETE /comments/:post_id/:comment_id` 🔒
+
+Delete a comment. Only the comment author can delete their own comment.
+
+**Response `204`:** No content.
+
+**Errors:**
+
+| Code | Reason |
+|------|--------|
+| 403  | Not the comment author |
+| 404  | Comment not found |
+
+---
+
+## Cassandra Table: `post_comments`
+
+Partition key: `post_id` — all comments for a post live in one partition.
+Clustering: `created_at ASC, comment_id ASC` — reads are top-to-bottom, pagination via `created_at > ?`.
+
+```
+post_id    uuid  (partition)
+created_at timestamp  (cluster asc)
+comment_id uuid  (cluster asc)
+user_id    uuid
+username   text
+body       text
+```
+
+---
+
+## Configuration
+
+```env
+CASSANDRA_NODES=localhost:9042
+HTTP_ADDR=0.0.0.0:3008
+JWT_SECRET=changeme
+RUST_LOG=info
+```
+
+---
+
+## Local Development
+
+```bash
+cp .env.example .env
+cargo run
+```
+
+---
+
+## Project Structure
+
+```
+CommentService/
+├── src/
+│   ├── main.rs     # Entry point
+│   ├── config.rs   # Env-var config
+│   ├── db_cql.rs   # Cassandra: create, list, delete comment
+│   ├── models.rs   # Comment struct
+│   ├── auth.rs     # JWT middleware
+│   ├── http.rs     # Axum router + handlers
+│   └── error.rs    # AppError → HTTP response
+├── Cargo.toml
+└── .env.example
+```
