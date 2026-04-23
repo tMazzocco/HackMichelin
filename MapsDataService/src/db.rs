@@ -6,38 +6,61 @@ use crate::{
 };
 
 /// Bounding-box pre-filter then exact Haversine check.
+/// JOINs cities, countries and michelin_awards so callers get flat string
+/// fields without extra round-trips.
+/// LEFT JOIN restaurant_stats inlines good_pct and total_posts so the map
+/// overlay never needs a second round-trip.
 /// $1 = lat, $2 = lng, $3 = radius_meters, $4 = limit
 const NEARBY_SQL: &str = r#"
     SELECT
-        id, name, slug, chef, lat, lng,
-        city, country_code, country_name, region_name, area_name,
-        street, postcode, phone, website, short_link,
-        michelin_award, distinction_score, guide_year, green_star,
-        price_category_label, main_image_url,
-        online_booking, take_away, delivery,
+        r.id, r.name, r.slug, r.chef,
+        r.latitude, r.longitude,
+        ci.name                                                       AS city,
+        co.code                                                       AS country_code,
+        co.name                                                       AS country_name,
+        ci.region_name,
+        ci.area_name,
+        r.street, r.postcode, r.phone, r.website, r.short_link,
+        ma.michelin_award,
+        r.distinction_score, r.guide_year, r.green_star,
+        (
+            SELECT pc.label
+            FROM costing c
+            JOIN price_categories pc ON pc.code = c.price_categories_code
+            WHERE c.restaurant_id = r.id
+            LIMIT 1
+        )                                                             AS price_category_label,
+        r.main_image_url,
+        r.online_booking, r.take_away, r.delivery,
         (
             6371000.0 * acos(
                 LEAST(1.0,
-                    cos(radians($1)) * cos(radians(lat)) * cos(radians(lng) - radians($2))
-                    + sin(radians($1)) * sin(radians(lat))
+                    cos(radians($1)) * cos(radians(r.latitude)) * cos(radians(r.longitude) - radians($2))
+                    + sin(radians($1)) * sin(radians(r.latitude))
                 )
             )
-        ) AS distance_meters
-    FROM restaurants
+        )                                                             AS distance_meters,
+        COALESCE(s.total_posts, 0)                                    AS total_posts,
+        COALESCE(s.good_posts::float / NULLIF(s.total_posts, 0), 0.0) AS good_pct
+    FROM restaurants r
+    JOIN  cities          ci ON ci.id = r.city_id
+    JOIN  countries       co ON co.id = ci.country_id
+    LEFT JOIN michelin_awards ma ON ma.id = r.michelin_award_id
+    LEFT JOIN restaurant_stats s  ON s.restaurant_id = r.id
     WHERE
-        lat IS NOT NULL
-        AND lng IS NOT NULL
+        r.latitude  IS NOT NULL
+        AND r.longitude IS NOT NULL
         -- fast bounding-box cull (1° lat ≈ 111 320 m)
-        AND lat BETWEEN $1 - ($3 / 111320.0)
-                    AND $1 + ($3 / 111320.0)
-        AND lng BETWEEN $2 - ($3 / (111320.0 * GREATEST(cos(radians($1)), 0.0001)))
-                    AND $2 + ($3 / (111320.0 * GREATEST(cos(radians($1)), 0.0001)))
+        AND r.latitude  BETWEEN $1 - ($3 / 111320.0)
+                            AND $1 + ($3 / 111320.0)
+        AND r.longitude BETWEEN $2 - ($3 / (111320.0 * GREATEST(cos(radians($1)), 0.0001)))
+                            AND $2 + ($3 / (111320.0 * GREATEST(cos(radians($1)), 0.0001)))
         -- exact Haversine check
         AND (
             6371000.0 * acos(
                 LEAST(1.0,
-                    cos(radians($1)) * cos(radians(lat)) * cos(radians(lng) - radians($2))
-                    + sin(radians($1)) * sin(radians(lat))
+                    cos(radians($1)) * cos(radians(r.latitude)) * cos(radians(r.longitude) - radians($2))
+                    + sin(radians($1)) * sin(radians(r.latitude))
                 )
             )
         ) <= $3
@@ -47,14 +70,30 @@ const NEARBY_SQL: &str = r#"
 
 const BY_ID_SQL: &str = r#"
     SELECT
-        id, name, slug, chef, lat, lng,
-        city, country_code, country_name, region_name, area_name,
-        street, postcode, phone, website, short_link,
-        michelin_award, distinction_score, guide_year, green_star,
-        price_category_label, main_image_url, main_desc,
-        online_booking, take_away, delivery
-    FROM restaurants
-    WHERE id = $1
+        r.id, r.name, r.slug, r.chef,
+        r.latitude, r.longitude,
+        ci.name   AS city,
+        co.code   AS country_code,
+        co.name   AS country_name,
+        ci.region_name,
+        ci.area_name,
+        r.street, r.postcode, r.phone, r.website, r.short_link,
+        ma.michelin_award,
+        r.distinction_score, r.guide_year, r.green_star,
+        (
+            SELECT pc.label
+            FROM costing c
+            JOIN price_categories pc ON pc.code = c.price_categories_code
+            WHERE c.restaurant_id = r.id
+            LIMIT 1
+        )         AS price_category_label,
+        r.main_image_url, r.main_desc,
+        r.online_booking, r.take_away, r.delivery
+    FROM restaurants r
+    JOIN  cities          ci ON ci.id = r.city_id
+    JOIN  countries       co ON co.id = ci.country_id
+    LEFT JOIN michelin_awards ma ON ma.id = r.michelin_award_id
+    WHERE r.id = $1
 "#;
 
 const LIST_SQL: &str = r#"

@@ -1,0 +1,119 @@
+# StatsService
+
+Rust microservice that maintains aggregated good/bad experience counts per restaurant. It listens to MQTT events from PostService and upserts `restaurant_stats` in PostgreSQL. MapsDataService JOINs this table inline with nearby queries so the map overlay always reflects live user sentiment.
+
+---
+
+## Architecture
+
+```
+PostService
+    │
+    │  post.created / post.deleted  (MQTT)
+    ▼
+StatsService :3010
+    │
+    ▼
+PostgreSQL (restaurant_stats)
+    ▲
+    │  LEFT JOIN
+MapsDataService
+```
+
+---
+
+## HTTP Endpoints
+
+### `GET /health`
+Liveness probe. Returns `200 ok`.
+
+---
+
+### `GET /restaurants/:id`
+
+Returns aggregated stats for a single restaurant.
+
+**Example:**
+```
+GET /restaurants/134469
+```
+
+**Response `200`:**
+```json
+{
+  "restaurant_id": "134469",
+  "total_posts": 24,
+  "good_posts": 20,
+  "bad_posts": 4,
+  "good_pct": 0.833
+}
+```
+
+`good_pct` is computed at query time as `good_posts::float / NULLIF(total_posts, 0)`.
+
+**Response `404`:** Restaurant has no stats yet (no posts have been created for it).
+
+---
+
+## MQTT Subscriptions
+
+| Topic           | Payload fields used | Action |
+|-----------------|---------------------|--------|
+| `post.created`  | `restaurant_id`, `rating` (`"GOOD"` or `"BAD"`) | UPSERT: increment `total_posts` + `good_posts` or `bad_posts` |
+| `post.deleted`  | `restaurant_id`, `rating` | UPDATE: decrement counters (floor at 0) |
+
+If `restaurant_id` is missing from the payload the event is silently ignored.
+
+---
+
+## PostgreSQL Table: `restaurant_stats`
+
+| Column          | Type        | Notes |
+|-----------------|-------------|-------|
+| `restaurant_id` | VARCHAR(50) PK FK | Michelin objectID, references `restaurants.id` |
+| `total_posts`   | INT         | |
+| `good_posts`    | INT         | |
+| `bad_posts`     | INT         | |
+| `last_updated`  | TIMESTAMPTZ | updated on every upsert |
+
+Upsert uses `ON CONFLICT (restaurant_id) DO UPDATE` — safe under concurrent MQTT events.
+
+---
+
+## Configuration
+
+```env
+DATABASE_URL=postgresql://admin:changeme@localhost:5432/hackmichelin
+HTTP_ADDR=0.0.0.0:3010
+MQTT_HOST=localhost
+MQTT_PORT=1883
+MQTT_CLIENT_ID=stats-service
+RUST_LOG=info
+```
+
+---
+
+## Local Development
+
+```bash
+cp .env.example .env
+cargo run
+```
+
+---
+
+## Project Structure
+
+```
+StatsService/
+├── src/
+│   ├── main.rs     # Entry point
+│   ├── config.rs   # Env-var config
+│   ├── db.rs       # upsert_on_create, decrement_on_delete, get_stats
+│   ├── models.rs   # RestaurantStats, PostEvent
+│   ├── http.rs     # Axum router + get_stats handler
+│   ├── mqtt.rs     # MQTT subscriber loop
+│   └── error.rs    # AppError → HTTP response
+├── Cargo.toml
+└── .env.example
+```

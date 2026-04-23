@@ -1,0 +1,172 @@
+# UserService
+
+Rust microservice for user profiles, the social graph (follow/unfollow), and the Michelin star collection (honor-system check-in to any restaurant in the guide).
+
+---
+
+## Architecture
+
+```
+Client
+  │
+  ▼
+Nginx ──HTTP──▶ UserService :3003
+                      │
+         ┌────────────┼────────────┐
+         │            │            │
+    PostgreSQL    Cassandra    MQTT Broker
+    (users,       (user_        (user.updated,
+     user_star_    following,    follow events)
+     collections) user_followers)
+```
+
+---
+
+## HTTP Endpoints
+
+All endpoints are prefixed `/api/users/` by Nginx.
+
+### `GET /users/:id`
+Public profile. Returns username, bio, avatar, and denormalized counters.
+
+**Response `200`:**
+```json
+{
+  "id": "<uuid>",
+  "username": "alice",
+  "bio": "Michelin hunter 🍽",
+  "avatar_url": "https://...",
+  "stars_collected": 14,
+  "followers_count": 320,
+  "following_count": 87,
+  "created_at": "2024-01-15T10:00:00Z"
+}
+```
+
+---
+
+### `PATCH /users/me` 🔒
+Update bio and/or avatar URL for the authenticated user.
+
+**Body:** `{ "bio": "...", "avatar_url": "..." }` (both optional)
+
+**Response `200`:** Updated profile object.
+
+---
+
+### `POST /users/:id/follow` 🔒
+Follow another user. Writes to Cassandra `user_following` + `user_followers` and increments counters in PostgreSQL.
+
+### `DELETE /users/:id/follow` 🔒
+Unfollow. Deletes from both Cassandra tables and decrements counters.
+
+---
+
+### `GET /users/:id/followers`
+List users who follow `:id`.
+
+**Query:** `?page=1&limit=20`
+
+**Response `200`:** `[{ "user_id": "...", "username": "..." }, ...]`
+
+### `GET /users/:id/following`
+List users that `:id` follows.
+
+---
+
+### `POST /users/me/stars/:restaurant_id` 🔒
+Add a Michelin restaurant to the authenticated user's collection. Snapshots `michelin_award`, `green_star`, and `distinction_score` at collection time so the collection stays accurate if the guide changes later.
+
+The award string is resolved via a JOIN on the `michelin_awards` lookup table.
+
+**Response `201`:** `{ "message": "collected" }`
+
+**Errors:**
+
+| Code | Reason |
+|------|--------|
+| 409  | Already collected |
+| 404  | Restaurant not found |
+
+### `DELETE /users/me/stars/:restaurant_id` 🔒
+Remove a restaurant from the collection.
+
+### `GET /users/:id/stars`
+Paginated list of a user's collected restaurants.
+
+**Query:** `?page=1&limit=20`
+
+**Response `200`:**
+```json
+[
+  {
+    "restaurant_id": "134469",
+    "restaurant_name": "Le Gabriel - La Réserve Paris",
+    "michelin_award": "THREE_STARS",
+    "green_star": false,
+    "distinction_score": 5,
+    "collected_at": "2024-03-10T18:22:00Z"
+  }
+]
+```
+
+---
+
+## PostgreSQL Tables
+
+- `users` — profile data + denormalized counters (`stars_collected`, `followers_count`, `following_count`)
+- `user_star_collections` — `(user_id, restaurant_id)` composite PK; snapshotted award fields
+- `michelin_awards` — lookup table joined at collection time to snapshot the award string
+
+---
+
+## Cassandra Tables
+
+- `user_following (follower_id, followed_id)` — "who does X follow?" used by FeedService fan-out
+- `user_followers (followed_id, follower_id)` — "who follows X?" used for profile followers list
+
+Both tables are written atomically on follow/unfollow.
+
+---
+
+## Configuration
+
+```env
+DATABASE_URL=postgresql://admin:changeme@localhost:5432/hackmichelin
+CASSANDRA_NODES=localhost:9042
+HTTP_ADDR=0.0.0.0:3003
+JWT_SECRET=changeme
+MQTT_HOST=localhost
+MQTT_PORT=1883
+MQTT_CLIENT_ID=user-service
+RUST_LOG=info
+```
+
+---
+
+## Local Development
+
+```bash
+cp .env.example .env
+cargo run
+```
+
+---
+
+## Project Structure
+
+```
+UserService/
+├── src/
+│   ├── main.rs      # Entry point
+│   ├── config.rs    # Env-var config
+│   ├── db_pg.rs     # PostgreSQL: profile CRUD, star collection, counter updates
+│   ├── db_cql.rs    # Cassandra: follow graph read/write
+│   ├── models.rs    # UserProfile, StarEntry, FollowEntry
+│   ├── auth.rs      # JWT extraction middleware
+│   ├── http.rs      # Axum router and handlers
+│   ├── mqtt.rs      # MQTT publisher (user.updated)
+│   └── error.rs     # AppError → HTTP response
+├── Cargo.toml
+└── .env.example
+```

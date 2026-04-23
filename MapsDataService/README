@@ -22,6 +22,7 @@ MQTT Broker ◀───┘           PostgreSQL
 - Nginx proxies HTTP requests to this service.
 - Other microservices can query via MQTT publish/subscribe (request–reply).
 - All restaurant data lives in PostgreSQL, pre-loaded from `all_restaurants.jsonl`.
+- Geographic data is normalized: `restaurants` references `cities` → `countries`; award data references `michelin_awards`.
 
 ---
 
@@ -59,10 +60,13 @@ GET /restaurants/nearby?lat=48.8566&lng=2.3522&radius=3000&limit=5
     "name": "Le Gabriel - La Réserve Paris",
     "slug": "le-gabriel476630",
     "chef": null,
-    "lat": 48.8697,
-    "lng": 2.3132,
+    "latitude": 48.8697,
+    "longitude": 2.3132,
     "city": "Paris",
     "country_code": "FR",
+    "country_name": "France",
+    "region_name": "Île-de-France",
+    "area_name": null,
     "michelin_award": "THREE_STARS",
     "distinction_score": 5,
     "guide_year": 2026,
@@ -72,10 +76,14 @@ GET /restaurants/nearby?lat=48.8566&lng=2.3522&radius=3000&limit=5
     "online_booking": true,
     "take_away": false,
     "delivery": false,
-    "distance_meters": 1423.7
+    "distance_meters": 1423.7,
+    "total_posts": 12,
+    "good_pct": 0.916
   }
 ]
 ```
+
+> `city`, `country_code`, `country_name`, `region_name` and `michelin_award` are resolved via JOINs on the `cities`, `countries` and `michelin_awards` lookup tables. `price_category_label` comes from a correlated subquery on `costing → price_categories`.
 
 **Error responses:**
 

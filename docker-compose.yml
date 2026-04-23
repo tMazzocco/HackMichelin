@@ -1,6 +1,6 @@
 services:
 
-  # Nginx Reverse Proxy
+  # ── Reverse Proxy ─────────────────────────────────────────────────────────────
   nginx:
     image: nginx:alpine
     container_name: nginx
@@ -12,7 +12,7 @@ services:
       - ./nginx/certs:/etc/nginx/certs
     restart: unless-stopped
 
-  # MQTT 5 Broker
+  # ── MQTT Broker ───────────────────────────────────────────────────────────────
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: mosquitto
@@ -25,7 +25,7 @@ services:
       - mosquitto_log:/mosquitto/log
     restart: unless-stopped
 
-  # Elasticsearch
+  # ── Elasticsearch ─────────────────────────────────────────────────────────────
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
     container_name: elasticsearch
@@ -45,7 +45,7 @@ services:
       timeout: 10s
       retries: 5
 
-  # Kibana (Elasticsearch UI)
+  # ── Kibana ────────────────────────────────────────────────────────────────────
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.0
     container_name: kibana
@@ -58,7 +58,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # PostgreSQL
+  # ── PostgreSQL ────────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: postgres
@@ -78,7 +78,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # Cassandra
+  # ── Cassandra ─────────────────────────────────────────────────────────────────
   cassandra:
     image: cassandra:5
     container_name: cassandra
@@ -100,7 +100,6 @@ services:
       retries: 10
       start_period: 60s
 
-  # Cassandra init (runs CQL schema after Cassandra is healthy)
   cassandra-init:
     image: cassandra:5
     container_name: cassandra-init
@@ -112,7 +111,7 @@ services:
     command: /bin/bash -c "cqlsh cassandra -f /init.cql && echo 'Cassandra schema applied.'"
     restart: on-failure
 
-  # Restaurant data importer (PG + Elasticsearch)
+  # ── Data Importer ─────────────────────────────────────────────────────────────
   importer:
     build: ./init/import
     container_name: importer
@@ -128,6 +127,197 @@ services:
       ES_HOST: http://elasticsearch:9200
       JSONL_PATH: /data/all_restaurants.jsonl
     restart: on-failure
+
+  # ── Application Services ──────────────────────────────────────────────────────
+  # Run locally with `cargo run` during development.
+  # Uncomment each block to run in Docker once the service is ready.
+
+  # MapsDataService :3000
+  # maps_data_service:
+  #   build: ./MapsDataService
+  #   container_name: maps_data_service
+  #   environment:
+  #     HTTP_ADDR: "0.0.0.0:3000"
+  #     DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-hackmichelin}
+  #     MQTT_HOST: mosquitto
+  #     MQTT_PORT: "1883"
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  # DownloadService :3001
+  # download_service:
+  #   build: ./DownloadService
+  #   container_name: download_service
+  #   environment:
+  #     HTTP_ADDR: "0.0.0.0:3001"
+  #     MEDIA_DIR: /media
+  #     FILES_BASE_URL: files
+  #     PHOTO_DURATION: "5"
+  #     VIDEO_DURATION: "10"
+  #   ports:
+  #     - "3001:3001"
+  #   volumes:
+  #     - ./media:/media:ro
+  #   restart: unless-stopped
+
+  # LoginService :3002
+  # login_service:
+  #   build: ./LoginService
+  #   container_name: login_service
+  #   environment:
+  #     HTTP_ADDR: "0.0.0.0:3002"
+  #     DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-hackmichelin}
+  #     JWT_SECRET: ${JWT_SECRET:-change-me}
+  #     MQTT_HOST: mosquitto
+  #     MQTT_PORT: "1883"
+  #   ports:
+  #     - "3002:3002"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  # UserService :3003
+  # user_service:
+  #   build: ./UserService
+  #   container_name: user_service
+  #   environment:
+  #     HTTP_ADDR: "0.0.0.0:3003"
+  #     DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-hackmichelin}
+  #     CASSANDRA_NODES: cassandra:9042
+  #     JWT_SECRET: ${JWT_SECRET:-change-me}
+  #     MQTT_HOST: mosquitto
+  #     MQTT_PORT: "1883"
+  #   ports:
+  #     - "3003:3003"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     cassandra:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  # PostService :3004
+  # post_service:
+  #   build: ./PostService
+  #   container_name: post_service
+  #   environment:
+  #     HTTP_ADDR: "0.0.0.0:3004"
+  #     DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-hackmichelin}
+  #     CASSANDRA_NODES: cassandra:9042
+  #     JWT_SECRET: ${JWT_SECRET:-change-me}
+  #     MQTT_HOST: mosquitto
+  #     MQTT_PORT: "1883"
+  #   ports:
+  #     - "3004:3004"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     cassandra:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  # FeedService :3005
+  # feed_service:
+  #   build: ./FeedService
+  #   container_name: feed_service
+  #   environment:
+  #     HTTP_ADDR: "0.0.0.0:3005"
+  #     CASSANDRA_NODES: cassandra:9042
+  #     JWT_SECRET: ${JWT_SECRET:-change-me}
+  #     MQTT_HOST: mosquitto
+  #     MQTT_PORT: "1883"
+  #   ports:
+  #     - "3005:3005"
+  #   depends_on:
+  #     cassandra:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  # SearchService :3006
+  # search_service:
+  #   build: ./SearchService
+  #   container_name: search_service
+  #   environment:
+  #     HTTP_ADDR: "0.0.0.0:3006"
+  #     ES_HOST: http://elasticsearch:9200
+  #     JWT_SECRET: ${JWT_SECRET:-change-me}
+  #     MQTT_HOST: mosquitto
+  #     MQTT_PORT: "1883"
+  #   ports:
+  #     - "3006:3006"
+  #   depends_on:
+  #     elasticsearch:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  # UploadService :3007
+  # upload_service:
+  #   build: ./UploadService
+  #   container_name: upload_service
+  #   environment:
+  #     HTTP_ADDR: "0.0.0.0:3007"
+  #     DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-hackmichelin}
+  #     MEDIA_DIR: /media
+  #     JWT_SECRET: ${JWT_SECRET:-change-me}
+  #   ports:
+  #     - "3007:3007"
+  #   volumes:
+  #     - ./media:/media:rw
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  # CommentService :3008
+  # comment_service:
+  #   build: ./CommentService
+  #   container_name: comment_service
+  #   environment:
+  #     HTTP_ADDR: "0.0.0.0:3008"
+  #     CASSANDRA_NODES: cassandra:9042
+  #     JWT_SECRET: ${JWT_SECRET:-change-me}
+  #   ports:
+  #     - "3008:3008"
+  #   depends_on:
+  #     cassandra:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  # LikeService :3009
+  # like_service:
+  #   build: ./LikeService
+  #   container_name: like_service
+  #   environment:
+  #     HTTP_ADDR: "0.0.0.0:3009"
+  #     CASSANDRA_NODES: cassandra:9042
+  #     JWT_SECRET: ${JWT_SECRET:-change-me}
+  #   ports:
+  #     - "3009:3009"
+  #   depends_on:
+  #     cassandra:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  # StatsService :3010
+  # stats_service:
+  #   build: ./StatsService
+  #   container_name: stats_service
+  #   environment:
+  #     HTTP_ADDR: "0.0.0.0:3010"
+  #     DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-hackmichelin}
+  #     MQTT_HOST: mosquitto
+  #     MQTT_PORT: "1883"
+  #   ports:
+  #     - "3010:3010"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   restart: unless-stopped
 
 volumes:
   mosquitto_data:

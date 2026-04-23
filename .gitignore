@@ -11,14 +11,18 @@ target/
 **/target/
 
 # ======================
-# DATA FILES (TRÈS IMPORTANT)
+# DATA FILES
 # ======================
+*.jsonl
+bulk_*
+restaurants_es.jsonl
 all_restaurants.jsonl
 ressources/all_restaurants.jsonl
-restaurants_es.jsonl
-bulk.jsonl
-bulk_result.json
-bulk_part_*
+
+# ======================
+# MEDIA
+# ======================
+media/*
 
 # ======================
 # LOGS
@@ -38,21 +42,22 @@ Thumbs.db
 .idea/
 
 # ======================
-# PYTHON (scripts)
+# PYTHON
 # ======================
 __pycache__/
 *.pyc
 *.pyo
 
 # ======================
-# DOCKER
+# DOCKER / TEMP
 # ======================
 *.pid
 *.sock
-
-# ======================
-# TEMP FILES
-# ======================
 *.tmp
 *.swp
 *.swo
+
+# ======================
+# SCRIPTS
+# ======================
+*.sh

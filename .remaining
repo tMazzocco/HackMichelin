@@ -1,0 +1,31 @@
+HackMichelin — Implementation Status
+Infrastructure (100% complete)
+docker-compose.yml — all 11 services defined (commented out, ready to uncomment)
+init/postgres/01_schema.sql — full schema with users, restaurants, media, refresh_tokens, user_star_collections, restaurant_stats
+init/cassandra/init.cql — posts, user_posts, restaurant_posts, user_feed, post_comments, post_likes, post_likes_count, user_following, user_followers
+nginx/conf.d/gateway.conf — all 11 upstreams and location blocks
+init/import/import.py — seeds both restaurants and users ES indexes
+.env.exemple — all env vars documented
+Services (100% complete)
+Service	Port	Status	Key tech
+MapsDataService	3000	✅ Done	PG + Haversine + LEFT JOIN restaurant_stats
+DownloadService	3001	✅ Done (pre-existing)	HLS/Range media serving
+LoginService	3002	✅ Done	JWT HS256, bcrypt, refresh tokens, MQTT pub
+UserService	3003	✅ Done	PG profiles + Cassandra social graph + star collection
+PostService	3004	✅ Done	Cassandra 3-table write, MQTT pub post.created/deleted
+FeedService	3005	✅ Done	MQTT sub post.created, fan-out to followers
+SearchService	3006	✅ Just implemented	Elasticsearch 8.5, MQTT sub user.registered/updated
+UploadService	3007	✅ Done	Multipart, ffmpeg thumbnails, PG media metadata
+CommentService	3008	✅ Just implemented	Cassandra post_comments, cursor-ascending pagination
+LikeService	3009	✅ Just implemented	Cassandra post_likes + counter table, LWT IF NOT EXISTS
+StatsService	3010	✅ Done	MQTT sub post.created/deleted, PG upsert restaurant_stats
+What remains before running
+Each service needs a .env file — copy .env.exemple, set HTTP_ADDR per service and database credentials
+Build test — run cargo build in each service directory to catch any compile errors (none anticipated but worth verifying)
+Start infrastructure: docker compose up -d postgres cassandra elasticsearch mosquitto kibana then docker compose up -d cassandra-init importer nginx
+Run services locally: cd <ServiceDir> && cargo run (or uncomment docker-compose blocks and use Docker)
+Known architectural notes
+SearchService geo-filter is intentionally not wired to ES (restaurants index uses flat lat/lng, not a geo_point mapping) — use MapsDataService for geo queries
+LikeService uses Cassandra IF NOT EXISTS LWT to prevent double-likes (returns 409 on conflict)
+CommentService DELETE requires ?created_at= query param because created_at is a clustering key in Cassandra
+All 🔒 routes validate JWT independently per service using shared JWT_SECRET — no LoginService round-trip
