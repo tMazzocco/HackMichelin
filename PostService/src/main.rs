@@ -9,7 +9,8 @@ mod mqtt;
 
 use std::sync::Arc;
 use sqlx::postgres::PgPoolOptions;
-use tracing::info;
+use scylla::IntoTypedRows;
+use tracing::{info, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[tokio::main]
@@ -34,6 +35,25 @@ async fn main() -> anyhow::Result<()> {
             .build()
             .await?,
     );
+
+    for table in &["posts", "user_posts", "restaurant_posts"] {
+        match cassandra.query(
+            "SELECT column_name, type FROM system_schema.columns WHERE keyspace_name = 'hackmichelin' AND table_name = ?",
+            (table,),
+        ).await {
+            Ok(result) => {
+                if let Some(rows) = result.rows {
+                    let cols: Vec<String> = rows
+                        .into_typed::<(String, String)>()
+                        .filter_map(|r| r.ok())
+                        .map(|(col, typ)| format!("{col} ({typ})"))
+                        .collect();
+                    info!("hackmichelin.{table} columns: [{}]", cols.join(", "));
+                }
+            }
+            Err(e) => warn!("Could not introspect {table} schema: {e}"),
+        }
+    }
 
     let mqtt_pub = mqtt::MqttPublisher::new(&cfg);
 
