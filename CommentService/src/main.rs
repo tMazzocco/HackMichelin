@@ -27,6 +27,9 @@ async fn main() -> anyhow::Result<()> {
         .known_node(&cfg.cassandra_nodes)
         .build()
         .await?;
+
+    session.use_keyspace("hackmichelin", false).await?;
+
     let session = Arc::new(session);
 
     let state = http::AppState {

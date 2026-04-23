@@ -1,8 +1,4 @@
-use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    Json,
-};
+use axum::{http::StatusCode, response::{IntoResponse, Response}, Json};
 use serde_json::json;
 use thiserror::Error;
 
@@ -10,59 +6,40 @@ use thiserror::Error;
 pub enum AppError {
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),
-
     #[error("cassandra error: {0}")]
     Cassandra(String),
-
     #[error("unauthorized")]
     Unauthorized,
-
     #[error("not found")]
     NotFound,
-
     #[error("conflict: {0}")]
     Conflict(String),
-
     #[error("bad request: {0}")]
     BadRequest(String),
-
-    #[error("internal error: {0}")]
+    #[error("internal: {0}")]
     Internal(String),
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let (status, message) = match &self {
+        let (status, msg) = match &self {
             AppError::Database(e) => {
-                // Detect unique constraint violation (PostgreSQL code 23505)
-                if let sqlx::Error::Database(db_err) = e {
-                    if db_err.code().as_deref() == Some("23505") {
-                        return (
-                            StatusCode::CONFLICT,
-                            Json(json!({ "error": db_err.message() })),
-                        )
-                            .into_response();
-                    }
-                }
-                tracing::error!("DB error: {e}");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "internal server error".to_string(),
-                )
+                tracing::error!("DB: {e}");
+                (StatusCode::INTERNAL_SERVER_ERROR, "internal server error".to_string())
             }
-            AppError::Cassandra(msg) => {
-                tracing::error!("Cassandra error: {msg}");
-                (StatusCode::INTERNAL_SERVER_ERROR, msg.clone())
+            AppError::Cassandra(e) => {
+                tracing::error!("Cassandra: {e}");
+                (StatusCode::INTERNAL_SERVER_ERROR, "internal server error".to_string())
             }
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized".to_string()),
             AppError::NotFound => (StatusCode::NOT_FOUND, "not found".to_string()),
-            AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
-            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
-            AppError::Internal(msg) => {
-                tracing::error!("Internal error: {msg}");
-                (StatusCode::INTERNAL_SERVER_ERROR, msg.clone())
+            AppError::Conflict(m) => (StatusCode::CONFLICT, m.clone()),
+            AppError::BadRequest(m) => (StatusCode::BAD_REQUEST, m.clone()),
+            AppError::Internal(m) => {
+                tracing::error!("Internal: {m}");
+                (StatusCode::INTERNAL_SERVER_ERROR, "internal server error".to_string())
             }
         };
-        (status, Json(json!({ "error": message }))).into_response()
+        (status, Json(json!({ "error": msg }))).into_response()
     }
 }

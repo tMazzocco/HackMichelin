@@ -6,38 +6,43 @@ use crate::{
 };
 
 /// Bounding-box pre-filter then exact Haversine check.
+/// LEFT JOIN restaurant_stats inlines good_pct and total_posts so the map
+/// overlay never needs a second round-trip.
 /// $1 = lat, $2 = lng, $3 = radius_meters, $4 = limit
 const NEARBY_SQL: &str = r#"
     SELECT
-        id, name, slug, chef, lat, lng,
-        city, country_code, country_name, region_name, area_name,
-        street, postcode, phone, website, short_link,
-        michelin_award, distinction_score, guide_year, green_star,
-        price_category_label, main_image_url,
-        online_booking, take_away, delivery,
+        r.id, r.name, r.slug, r.chef, r.lat, r.lng,
+        r.city, r.country_code, r.country_name, r.region_name, r.area_name,
+        r.street, r.postcode, r.phone, r.website, r.short_link,
+        r.michelin_award, r.distinction_score, r.guide_year, r.green_star,
+        r.price_category_label, r.main_image_url,
+        r.online_booking, r.take_away, r.delivery,
         (
             6371000.0 * acos(
                 LEAST(1.0,
-                    cos(radians($1)) * cos(radians(lat)) * cos(radians(lng) - radians($2))
-                    + sin(radians($1)) * sin(radians(lat))
+                    cos(radians($1)) * cos(radians(r.lat)) * cos(radians(r.lng) - radians($2))
+                    + sin(radians($1)) * sin(radians(r.lat))
                 )
             )
-        ) AS distance_meters
-    FROM restaurants
+        ) AS distance_meters,
+        COALESCE(s.total_posts, 0)                                              AS total_posts,
+        COALESCE(s.good_posts::float / NULLIF(s.total_posts, 0), 0.0)          AS good_pct
+    FROM restaurants r
+    LEFT JOIN restaurant_stats s ON s.restaurant_id = r.id
     WHERE
-        lat IS NOT NULL
-        AND lng IS NOT NULL
+        r.lat IS NOT NULL
+        AND r.lng IS NOT NULL
         -- fast bounding-box cull (1° lat ≈ 111 320 m)
-        AND lat BETWEEN $1 - ($3 / 111320.0)
-                    AND $1 + ($3 / 111320.0)
-        AND lng BETWEEN $2 - ($3 / (111320.0 * GREATEST(cos(radians($1)), 0.0001)))
-                    AND $2 + ($3 / (111320.0 * GREATEST(cos(radians($1)), 0.0001)))
+        AND r.lat BETWEEN $1 - ($3 / 111320.0)
+                      AND $1 + ($3 / 111320.0)
+        AND r.lng BETWEEN $2 - ($3 / (111320.0 * GREATEST(cos(radians($1)), 0.0001)))
+                      AND $2 + ($3 / (111320.0 * GREATEST(cos(radians($1)), 0.0001)))
         -- exact Haversine check
         AND (
             6371000.0 * acos(
                 LEAST(1.0,
-                    cos(radians($1)) * cos(radians(lat)) * cos(radians(lng) - radians($2))
-                    + sin(radians($1)) * sin(radians(lat))
+                    cos(radians($1)) * cos(radians(r.lat)) * cos(radians(r.lng) - radians($2))
+                    + sin(radians($1)) * sin(radians(r.lat))
                 )
             )
         ) <= $3

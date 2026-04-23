@@ -12,10 +12,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Load .env (ignored if absent)
     let _ = dotenvy::dotenv();
-
-    // Tracing
     tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .with(fmt::layer())
@@ -24,33 +21,26 @@ async fn main() -> anyhow::Result<()> {
     let cfg = config::Config::from_env()?;
     info!("Starting FeedService on {}", cfg.http_addr);
 
-    // Connect to Cassandra / ScyllaDB
-    let session = scylla::SessionBuilder::new()
-        .known_nodes(&cfg.cassandra_nodes)
-        .build()
-        .await?;
-    let cassandra = Arc::new(session);
-    info!("Cassandra session connected.");
+    let cassandra = Arc::new(
+        scylla::SessionBuilder::new()
+            .known_node(&cfg.cassandra_nodes)
+            .build()
+            .await?,
+    );
+    cassandra.use_keyspace("hackmichelin", false).await?;
+    info!("Cassandra connected.");
 
-    // Spawn MQTT subscriber in background
+    // MQTT subscriber runs in background
     {
-        let cfg_mqtt = cfg.clone();
-        let cassandra_mqtt = Arc::clone(&cassandra);
-        tokio::spawn(async move {
-            mqtt::run(cfg_mqtt, cassandra_mqtt).await;
-        });
+        let cfg2 = cfg.clone();
+        let cass2 = cassandra.clone();
+        tokio::spawn(async move { mqtt::run(cfg2, cass2).await; });
     }
 
-    // HTTP server
-    let app = http::router(http::AppState {
-        cassandra: Arc::clone(&cassandra),
-        config: cfg.clone(),
-    });
-
+    let app = http::router(http::AppState { cassandra, config: cfg.clone() });
     let addr: std::net::SocketAddr = cfg.http_addr.parse()?;
-    info!("HTTP listening on {addr}");
     let listener = tokio::net::TcpListener::bind(addr).await?;
+    info!("HTTP listening on {addr}");
     axum::serve(listener, app).await?;
-
     Ok(())
 }
