@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --text: #150303;
+  --background: #fbfbfe;
+  --primary: #AB152E;
+  --secondary: #ff93a5;
+  --accent: #ae001c;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: var(--background);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Leaflet ────────────────────────────────────────────── */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(21, 3, 3, 0.15);
+}
+
+.leaflet-popup-tip {
+  background: white;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Shorts scroll-snap ─────────────────────────────────── */
+.shorts-container {
+  height: 100%;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.shorts-item {
+  height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  position: relative;
+}
+
+/* ── Page layout ────────────────────────────────────────── */
+.page {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}

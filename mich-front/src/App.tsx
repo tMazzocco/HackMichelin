@@ -1,51 +1,38 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { Routes, Route } from "react-router-dom";
+import { useLocation } from "react-router-dom";
+import TopBar from "./components/layout/TopBar";
+import BottomNav from "./components/layout/BottomNav";
+import HomePage from "./pages/HomePage";
+import MapPage from "./pages/MapPage";
+import ShortsPage from "./pages/ShortsPage";
+import ArticlesPage from "./pages/ArticlesPage";
+import ArticleDetailPage from "./pages/ArticleDetailPage";
+import RestaurantDetailPage from "./pages/RestaurantDetailPage";
+import ProfilePage from "./pages/ProfilePage";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+const FULL_SCREEN_ROUTES = ["/shorts", "/map"];
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+function Layout() {
+  const { pathname } = useLocation();
+  const isFullScreen = FULL_SCREEN_ROUTES.some((r) => pathname.startsWith(r));
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+    <>
+      {!isFullScreen && <TopBar />}
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/map" element={<MapPage />} />
+        <Route path="/shorts" element={<ShortsPage />} />
+        <Route path="/articles" element={<ArticlesPage />} />
+        <Route path="/articles/:id" element={<ArticleDetailPage />} />
+        <Route path="/restaurant/:id" element={<RestaurantDetailPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
+      </Routes>
+      <BottomNav />
+    </>
   );
 }
 
-export default App;
+export default function App() {
+  return <Layout />;
+}
