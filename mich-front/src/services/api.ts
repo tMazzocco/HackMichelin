@@ -1,7 +1,7 @@
 import axios from "axios";
 
-// Always use relative paths so requests go through the Vite dev proxy,
-// which forwards /api/* to VITE_BACK_URL (or http://localhost:80 by default).
+// Use relative paths so requests go through the Vite dev proxy in development
+// (which forwards /api/* to VITE_BACK_URL) and through Nginx in production.
 // This avoids browser CORS restrictions entirely.
 const baseURL = "";
 

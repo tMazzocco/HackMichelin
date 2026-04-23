@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
+use scylla::IntoTypedRows;
 use crate::{error::AppError, models::Post};
 
 pub async fn insert_post(

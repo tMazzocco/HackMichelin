@@ -119,7 +119,8 @@ async fn list_user_posts(
         .unwrap_or_else(Utc::now);
     let limit = params.limit.unwrap_or(20).min(100);
     let posts = db_cql::list_user_posts(&state.cassandra, user_id, before, limit).await?;
-    Ok(Json(json!({ "data": posts, "next_before": posts.last().and_then(|p| p.created_at).map(|t| t.to_rfc3339()) })))
+    let next_before = posts.last().and_then(|p| p.created_at).map(|t| t.to_rfc3339());
+    Ok(Json(json!({ "data": posts, "next_before": next_before })))
 }
 
 async fn list_restaurant_posts(
@@ -132,7 +133,8 @@ async fn list_restaurant_posts(
         .unwrap_or_else(Utc::now);
     let limit = params.limit.unwrap_or(20).min(100);
     let posts = db_cql::list_restaurant_posts(&state.cassandra, &restaurant_id, before, limit).await?;
-    Ok(Json(json!({ "data": posts, "next_before": posts.last().and_then(|p| p.created_at).map(|t| t.to_rfc3339()) })))
+    let next_before = posts.last().and_then(|p| p.created_at).map(|t| t.to_rfc3339());
+    Ok(Json(json!({ "data": posts, "next_before": next_before })))
 }
 
 pub fn router(state: AppState) -> Router {

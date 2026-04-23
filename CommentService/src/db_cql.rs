@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use scylla::IntoTypedRows;
 use uuid::Uuid;
 
 use crate::{error::AppError, models::Comment};

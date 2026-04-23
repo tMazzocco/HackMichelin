@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS price_categories (
 CREATE TABLE IF NOT EXISTS restaurants (
     id                VARCHAR(50)       PRIMARY KEY,   -- objectID from Michelin dataset
     identifier        VARCHAR(50)       UNIQUE,
-    slug              VARCHAR(255)      UNIQUE,
+    slug              VARCHAR(255),
     name              VARCHAR(255)      NOT NULL,
     chef              VARCHAR(255),
     latitude          DOUBLE PRECISION,
