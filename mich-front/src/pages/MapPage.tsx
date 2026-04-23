@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { Search, X } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import MapView from "../components/map/MapView";
+import MapErrorBoundary from "../components/map/MapErrorBoundary";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import { Restaurant, awardStars, formatDistance } from "../types";
 import { Link } from "react-router-dom";
@@ -47,10 +48,10 @@ export default function MapPage() {
         {query.trim() && filtered.length > 0 && (
           <div className="mt-1 bg-background rounded-xl shadow-xl overflow-hidden max-h-56 overflow-y-auto border border-black/10">
             {filtered.slice(0, 10).map((r) => (
-              <Link
+              <button
                 key={r.id}
-                to={`/restaurant/${r.id}`}
-                className="flex items-center gap-3 px-4 py-2.5 hover:bg-black/5 border-b border-black/5 last:border-0"
+                onClick={() => { setSelected(r); setQuery(""); }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-black/5 border-b border-black/5 last:border-0 text-left"
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{r.name}</p>
@@ -62,7 +63,7 @@ export default function MapPage() {
                 {r.distance_meters != null && (
                   <span className="text-xs text-text/40">{formatDistance(r.distance_meters)}</span>
                 )}
-              </Link>
+              </button>
             ))}
           </div>
         )}
@@ -71,7 +72,9 @@ export default function MapPage() {
       {/* Map */}
       <div className="flex-1">
         {location ? (
-          <MapView location={location} restaurants={filtered} zoom={13} interactive />
+          <MapErrorBoundary>
+            <MapView location={location} restaurants={filtered} zoom={13} interactive />
+          </MapErrorBoundary>
         ) : (
           <div className="h-full flex items-center justify-center">
             <LoadingSpinner size={32} />

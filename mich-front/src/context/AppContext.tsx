@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Restaurant, UserLocation, UserProfile } from "../types";
 import { useGeolocation } from "../hooks/useGeolocation";
 import { getNearbyRestaurants } from "../services/restaurants";
@@ -8,6 +8,7 @@ interface AppContextValue {
   locationLoading: boolean;
   restaurants: Restaurant[];
   restaurantsLoading: boolean;
+  restaurantsError: boolean;
   profile: UserProfile;
   setProfile: (p: UserProfile) => void;
 }
@@ -24,6 +25,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const { location, loading: locationLoading } = useGeolocation();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [restaurantsLoading, setRestaurantsLoading] = useState(false);
+  const [restaurantsError, setRestaurantsError] = useState(false);
   const [profile, setProfileState] = useState<UserProfile>(() => {
     try {
       const stored = localStorage.getItem("mich_profile");
@@ -36,9 +38,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!location) return;
     setRestaurantsLoading(true);
+    setRestaurantsError(false);
     getNearbyRestaurants(location.lat, location.lng)
-      .then(setRestaurants)
-      .catch(() => setRestaurants([]))
+      .then((data) => { setRestaurants(data); setRestaurantsError(false); })
+      .catch(() => { setRestaurants([]); setRestaurantsError(true); })
       .finally(() => setRestaurantsLoading(false));
   }, [location]);
 
@@ -49,7 +52,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider
-      value={{ location, locationLoading, restaurants, restaurantsLoading, profile, setProfile }}
+      value={{ location, locationLoading, restaurants, restaurantsLoading, restaurantsError, profile, setProfile }}
     >
       {children}
     </AppContext.Provider>

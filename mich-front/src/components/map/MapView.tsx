@@ -1,12 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import { Link } from "react-router-dom";
-import { Restaurant, awardStars } from "../../types";
-import { UserLocation } from "../../types";
+import { Restaurant, awardStars, UserLocation } from "../../types";
 
 const CARTO_TILE = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
-const CARTO_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+const CARTO_ATTR =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
 function makeMarker(award: string | null) {
   const stars = awardStars(award);
@@ -34,8 +34,14 @@ interface Props {
 }
 
 export default function MapView({ location, restaurants, zoom = 13, interactive = true }: Props) {
+  // Each component instance gets a unique key. React uses it on MapContainer so Leaflet
+  // always receives a fresh DOM node — prevents the "Map container is already initialized"
+  // error that occurs when the same node is reused across navigation or effect cycles.
+  const [instanceKey] = useState(() => `map-${Math.random().toString(36).slice(2)}`);
+
   return (
     <MapContainer
+      key={instanceKey}
       center={[location.lat, location.lng]}
       zoom={zoom}
       zoomControl={false}

@@ -2,6 +2,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, MapPin } from "lucide-react";
 import { articles } from "../data/articles";
 import MapView from "../components/map/MapView";
+import MapErrorBoundary from "../components/map/MapErrorBoundary";
 
 export default function ArticleDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -51,12 +52,14 @@ export default function ArticleDetailPage() {
           <span>{article.restaurant_name}</span>
         </div>
         <div className="rounded-2xl overflow-hidden h-44 shadow-md">
-          <MapView
-            location={{ lat: article.restaurant_lat, lng: article.restaurant_lng }}
-            restaurants={[]}
-            zoom={14}
-            interactive={false}
-          />
+          <MapErrorBoundary height="176px">
+            <MapView
+              location={{ lat: article.restaurant_lat, lng: article.restaurant_lng }}
+              restaurants={[]}
+              zoom={14}
+              interactive={false}
+            />
+          </MapErrorBoundary>
         </div>
       </div>
     </div>

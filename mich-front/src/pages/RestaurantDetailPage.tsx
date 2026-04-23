@@ -3,9 +3,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Globe, Phone, MapPin, Star } from "lucide-react";
 import { getRestaurantById } from "../services/restaurants";
 import { getRestaurantPosts } from "../services/posts";
-import { Restaurant, Post, awardStars, awardLabel, timeAgo } from "../types";
+import { Restaurant, Post, awardStars, awardLabel } from "../types";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import MapView from "../components/map/MapView";
+import MapErrorBoundary from "../components/map/MapErrorBoundary";
 
 export default function RestaurantDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -13,15 +14,18 @@ export default function RestaurantDetailPage() {
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([getRestaurantById(id), getRestaurantPosts(id, 12)])
-      .then(([r, p]) => {
+    setError(false);
+    getRestaurantById(id)
+      .then((r) => {
         setRestaurant(r);
-        setPosts(p.data);
+        // Posts are supplementary — failure must not block the page
+        return getRestaurantPosts(id, 12).then((p) => setPosts(p.data)).catch(() => {});
       })
-      .catch(() => {})
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -33,10 +37,17 @@ export default function RestaurantDetailPage() {
     );
   }
 
-  if (!restaurant) {
+  if (error || !restaurant) {
     return (
-      <div className="page pt-14 pb-20 flex items-center justify-center text-text/40">
-        Restaurant not found.
+      <div className="page pt-14 pb-20 flex flex-col items-center justify-center gap-3 text-text/40 px-6 text-center">
+        <p className="text-base font-semibold">Restaurant not found</p>
+        <p className="text-sm">This restaurant may have been removed or is temporarily unavailable.</p>
+        <button
+          onClick={() => navigate(-1)}
+          className="mt-2 text-primary text-sm font-medium"
+        >
+          Go back
+        </button>
       </div>
     );
   }
@@ -131,12 +142,14 @@ export default function RestaurantDetailPage() {
         <div className="px-4 mt-5">
           <h2 className="font-semibold text-sm mb-2">Location</h2>
           <div className="rounded-2xl overflow-hidden h-40 shadow-md">
-            <MapView
-              location={{ lat: restaurant.latitude, lng: restaurant.longitude }}
-              restaurants={[restaurant]}
-              zoom={15}
-              interactive={false}
-            />
+            <MapErrorBoundary height="160px">
+              <MapView
+                location={{ lat: restaurant.latitude, lng: restaurant.longitude }}
+                restaurants={[restaurant]}
+                zoom={15}
+                interactive={false}
+              />
+            </MapErrorBoundary>
           </div>
         </div>
       )}
@@ -159,7 +172,7 @@ export default function RestaurantDetailPage() {
                   )}
                   {post.rating && (
                     <span className="absolute bottom-1 right-1 text-sm">
-                      {post.rating === "good" ? "👍" : "👎"}
+                      {post.rating === "GOOD" ? "👍" : "👎"}
                     </span>
                   )}
                 </div>

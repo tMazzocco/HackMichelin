@@ -3,13 +3,14 @@ import { Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import MapView from "../components/map/MapView";
+import MapErrorBoundary from "../components/map/MapErrorBoundary";
 import RestaurantCard from "../components/common/RestaurantCard";
 import ArticleCard from "../components/common/ArticleCard";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import { articles } from "../data/articles";
 
 export default function HomePage() {
-  const { location, restaurants, restaurantsLoading } = useApp();
+  const { location, restaurants, restaurantsLoading, restaurantsError } = useApp();
   const restScrollRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -17,7 +18,9 @@ export default function HomePage() {
       {/* Hero map */}
       <div className="relative h-56 mx-4 mt-4 rounded-2xl overflow-hidden shadow-lg">
         {location ? (
-          <MapView location={location} restaurants={restaurants} zoom={13} interactive={false} />
+          <MapErrorBoundary>
+            <MapView location={location} restaurants={restaurants} zoom={13} interactive={false} />
+          </MapErrorBoundary>
         ) : (
           <div className="h-full bg-black/10 flex items-center justify-center">
             <LoadingSpinner />
@@ -43,6 +46,10 @@ export default function HomePage() {
           <div className="flex justify-center py-6">
             <LoadingSpinner />
           </div>
+        ) : restaurantsError ? (
+          <p className="text-text/40 text-sm py-4 text-center">
+            Could not reach the server. Check your connection and try again.
+          </p>
         ) : restaurants.length === 0 ? (
           <p className="text-text/40 text-sm py-4 text-center">No restaurants found nearby.</p>
         ) : (

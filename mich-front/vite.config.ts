@@ -19,17 +19,17 @@ export default defineConfig(async () => ({
     watch: { ignored: ["**/src-tauri/**"] },
     proxy: {
       "/api/maps": {
-        target: "http://localhost:3000",
+        target: "http://localhost:80",
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/api\/maps/, ""),
       },
       "/api/posts": {
-        target: "http://localhost:3004",
+        target: "http://localhost:80",
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/api\/posts/, ""),
       },
       "/api/download": {
-        target: "http://localhost:3001",
+        target: "http://localhost:80",
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/api\/download/, ""),
       },
