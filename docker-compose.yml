@@ -122,7 +122,7 @@ services:
       elasticsearch:
         condition: service_healthy
     volumes:
-      - ./ressources/all_restaurants.jsonl:/data/all_restaurants.jsonl:ro
+      - ./all_restaurants.jsonl:/data/all_restaurants.jsonl:ro
     environment:
       PG_DSN: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-hackmichelin}
       ES_HOST: http://elasticsearch:9200

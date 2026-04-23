@@ -1,4 +1,58 @@
+# ======================
+# ENV
+# ======================
 .env
-ressources/all_restaurants.jsonl
+.env.*
 
-*/target/
+# ======================
+# RUST
+# ======================
+target/
+**/target/
+
+# ======================
+# DATA FILES (TRÈS IMPORTANT)
+# ======================
+all_restaurants.jsonl
+ressources/all_restaurants.jsonl
+restaurants_es.jsonl
+bulk.jsonl
+bulk_result.json
+bulk_part_*
+
+# ======================
+# LOGS
+# ======================
+*.log
+
+# ======================
+# OS FILES
+# ======================
+.DS_Store
+Thumbs.db
+
+# ======================
+# IDE / EDITOR
+# ======================
+.vscode/
+.idea/
+
+# ======================
+# PYTHON (scripts)
+# ======================
+__pycache__/
+*.pyc
+*.pyo
+
+# ======================
+# DOCKER
+# ======================
+*.pid
+*.sock
+
+# ======================
+# TEMP FILES
+# ======================
+*.tmp
+*.swp
+*.swo

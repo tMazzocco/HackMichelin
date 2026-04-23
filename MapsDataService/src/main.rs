@@ -4,6 +4,7 @@ mod error;
 mod http;
 mod models;
 mod mqtt;
+mod search;
 
 use sqlx::postgres::PgPoolOptions;
 use tracing::info;

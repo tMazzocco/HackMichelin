@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Full restaurant row returned from a nearby search (includes computed distance).
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -36,6 +36,67 @@ pub struct RestaurantNearby {
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct Restaurant {
     pub id:                   String,
+    pub name:                 String,
+    pub slug:                 Option<String>,
+    pub chef:                 Option<String>,
+    pub lat:                  Option<f64>,
+    pub lng:                  Option<f64>,
+    pub city:                 Option<String>,
+    pub country_code:         Option<String>,
+    pub country_name:         Option<String>,
+    pub region_name:          Option<String>,
+    pub area_name:            Option<String>,
+    pub street:               Option<String>,
+    pub postcode:             Option<String>,
+    pub phone:                Option<String>,
+    pub website:              Option<String>,
+    pub short_link:           Option<String>,
+    pub michelin_award:       Option<String>,
+    pub distinction_score:    Option<i32>,
+    pub guide_year:           Option<i32>,
+    pub green_star:           Option<bool>,
+    pub price_category_label: Option<String>,
+    pub main_image_url:       Option<String>,
+    pub main_desc:            Option<String>,
+    pub online_booking:       Option<bool>,
+    pub take_away:            Option<bool>,
+    pub delivery:             Option<bool>,
+}
+
+/// Payload for POST /restaurants
+#[derive(Debug, Deserialize)]
+pub struct CreateRestaurantPayload {
+    pub id:                   String,
+    pub name:                 String,
+    pub slug:                 Option<String>,
+    pub chef:                 Option<String>,
+    pub lat:                  Option<f64>,
+    pub lng:                  Option<f64>,
+    pub city:                 Option<String>,
+    pub country_code:         Option<String>,
+    pub country_name:         Option<String>,
+    pub region_name:          Option<String>,
+    pub area_name:            Option<String>,
+    pub street:               Option<String>,
+    pub postcode:             Option<String>,
+    pub phone:                Option<String>,
+    pub website:              Option<String>,
+    pub short_link:           Option<String>,
+    pub michelin_award:       Option<String>,
+    pub distinction_score:    Option<i32>,
+    pub guide_year:           Option<i32>,
+    pub green_star:           Option<bool>,
+    pub price_category_label: Option<String>,
+    pub main_image_url:       Option<String>,
+    pub main_desc:            Option<String>,
+    pub online_booking:       Option<bool>,
+    pub take_away:            Option<bool>,
+    pub delivery:             Option<bool>,
+}
+
+/// Payload for PUT /restaurants/:id
+#[derive(Debug, Deserialize)]
+pub struct UpdateRestaurantPayload {
     pub name:                 String,
     pub slug:                 Option<String>,
     pub chef:                 Option<String>,
