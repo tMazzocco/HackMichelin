@@ -48,7 +48,7 @@ pub async fn insert_post(
 pub async fn get_post(session: &Arc<scylla::Session>, post_id: Uuid) -> Result<Option<Post>, AppError> {
     debug!(post_id = %post_id, "querying hackmichelin.posts by post_id");
     let result = session.query(
-        "SELECT post_id, user_id, username, restaurant_id, restaurant_name, media_type, media_url, thumbnail_url, caption, created_at FROM hackmichelin.posts WHERE post_id = ?",
+        "SELECT post_id, user_id, username, restaurant_id, restaurant_name, media_type, media_url, thumbnail_url, caption, created_at FROM hackmichelin.posts WHERE post_id = ? ALLOW FILTERING",
         (post_id,),
     ).await.map_err(|e| { error!(post_id = %post_id, error = %e, "failed to query hackmichelin.posts"); AppError::Cassandra(e.to_string()) })?;
 
@@ -82,7 +82,7 @@ pub async fn delete_post(
     restaurant_id: Option<&str>,
 ) -> Result<(), AppError> {
     debug!(post_id = %post_id, user_id = %user_id, "deleting post from cassandra");
-    session.query("DELETE FROM hackmichelin.posts WHERE post_id = ?", (post_id,))
+    session.query("DELETE FROM hackmichelin.posts WHERE user_id = ? AND created_at = ? AND post_id = ?", (user_id, created_at, post_id))
         .await.map_err(|e| { error!(post_id = %post_id, error = %e, "failed to delete from hackmichelin.posts"); AppError::Cassandra(e.to_string()) })?;
     session.query(
         "DELETE FROM hackmichelin.user_posts WHERE user_id = ? AND created_at = ? AND post_id = ?",
