@@ -1,9 +1,9 @@
-import { useRef } from "react";
 import { Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import MapView from "../components/map/MapView";
 import MapErrorBoundary from "../components/map/MapErrorBoundary";
+import ResizableSplit from "../components/layout/ResizableSplit";
 import RestaurantCard from "../components/common/RestaurantCard";
 import ArticleCard from "../components/common/ArticleCard";
 import LoadingSpinner from "../components/common/LoadingSpinner";
@@ -11,31 +11,21 @@ import { articles } from "../data/articles";
 
 export default function HomePage() {
   const { location, restaurants, restaurantsLoading, restaurantsError } = useApp();
-  const restScrollRef = useRef<HTMLDivElement>(null);
 
-  return (
-    <div className="page pt-14 pb-20">
-      {/* Hero map */}
-      <div className="relative h-56 mx-4 mt-4 rounded-2xl overflow-hidden shadow-lg">
-        {location ? (
-          <MapErrorBoundary>
-            <MapView location={location} restaurants={restaurants} zoom={13} interactive={false} />
-          </MapErrorBoundary>
-        ) : (
-          <div className="h-full bg-black/10 flex items-center justify-center">
-            <LoadingSpinner />
-          </div>
-        )}
-        <Link
-          to="/map"
-          className="absolute bottom-3 right-3 bg-primary text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow"
-        >
-          Open map
-        </Link>
-      </div>
+  const mapPanel = location ? (
+    <MapErrorBoundary>
+      <MapView location={location} restaurants={restaurants} zoom={13} interactive />
+    </MapErrorBoundary>
+  ) : (
+    <div className="h-full bg-black/5 flex items-center justify-center">
+      <LoadingSpinner />
+    </div>
+  );
 
+  const contentPanel = (
+    <div className="h-full overflow-y-auto no-scrollbar">
       {/* Nearby restaurants */}
-      <section className="mt-6 px-4">
+      <section className="mt-5 px-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-base">Nearby</h2>
           <Link to="/map" className="text-primary text-sm flex items-center gap-0.5">
@@ -53,7 +43,7 @@ export default function HomePage() {
         ) : restaurants.length === 0 ? (
           <p className="text-text/40 text-sm py-4 text-center">No restaurants found nearby.</p>
         ) : (
-          <div ref={restScrollRef} className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
+          <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
             {restaurants.map((r) => (
               <RestaurantCard key={r.id} restaurant={r} />
             ))}
@@ -88,7 +78,7 @@ export default function HomePage() {
       </section>
 
       {/* Articles */}
-      <section className="mt-6 px-4">
+      <section className="mt-6 px-4 pb-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-base">Articles</h2>
           <Link to="/articles" className="text-primary text-sm flex items-center gap-0.5">
@@ -101,6 +91,20 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+    </div>
+  );
+
+  return (
+    // pt-14: below the fixed TopBar (h-14 = 56px)
+    // pb-14: above the fixed BottomNav (~56px)
+    <div className="fixed inset-0 pt-14 pb-14">
+      <ResizableSplit
+        top={mapPanel}
+        bottom={contentPanel}
+        defaultTopPercent={42}
+        minTopPercent={10}
+        maxTopPercent={85}
+      />
     </div>
   );
 }
