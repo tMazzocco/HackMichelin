@@ -57,7 +57,7 @@ fn restaurant_to_es_doc(restaurant: &Restaurant) -> Value {
         "online_booking": restaurant.online_booking,
         "take_away": restaurant.take_away,
         "delivery": restaurant.delivery,
-        "location": match (restaurant.lat, restaurant.lng) {
+        "location": match (restaurant.latitude, restaurant.longitude) {
             (Some(lat), Some(lng)) => json!({ "lat": lat, "lon": lng }),
             _ => Value::Null,
         }
