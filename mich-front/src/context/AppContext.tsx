@@ -6,6 +6,8 @@ import { getNearbyRestaurants } from "../services/restaurants";
 interface AppContextValue {
   location: UserLocation | null;
   locationLoading: boolean;
+  isSearchLocation: boolean;
+  setSearchLocation: (loc: UserLocation | null) => void;
   restaurants: Restaurant[];
   restaurantsLoading: boolean;
   restaurantsError: boolean;
@@ -22,7 +24,8 @@ const DEFAULT_PROFILE: UserProfile = {
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const { location, loading: locationLoading } = useGeolocation();
+  const { location: gpsLocation, loading: locationLoading } = useGeolocation();
+  const [searchLocation, setSearchLocation] = useState<UserLocation | null>(null);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [restaurantsLoading, setRestaurantsLoading] = useState(false);
   const [restaurantsError, setRestaurantsError] = useState(false);
@@ -35,6 +38,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   });
 
+  const location = searchLocation ?? gpsLocation;
+
   useEffect(() => {
     if (!location) return;
     setRestaurantsLoading(true);
@@ -43,7 +48,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .then((data) => { setRestaurants(data); setRestaurantsError(false); })
       .catch(() => { setRestaurants([]); setRestaurantsError(true); })
       .finally(() => setRestaurantsLoading(false));
-  }, [location]);
+  }, [location?.lat, location?.lng]);
 
   function setProfile(p: UserProfile) {
     setProfileState(p);
@@ -52,7 +57,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider
-      value={{ location, locationLoading, restaurants, restaurantsLoading, restaurantsError, profile, setProfile }}
+      value={{
+        location,
+        locationLoading,
+        isSearchLocation: searchLocation !== null,
+        setSearchLocation,
+        restaurants,
+        restaurantsLoading,
+        restaurantsError,
+        profile,
+        setProfile,
+      }}
     >
       {children}
     </AppContext.Provider>

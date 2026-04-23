@@ -47,6 +47,14 @@ body {
   box-shadow: 0 4px 24px rgba(21, 3, 3, 0.15);
 }
 
+.leaflet-popup-content {
+  margin: 13px 20px;
+}
+
+.leaflet-popup-close-button {
+  display: none !important;
+}
+
 .leaflet-popup-tip {
   background: white;
 }

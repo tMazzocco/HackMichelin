@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Loader, ActionIcon, Text } from "@mantine/core";
 import { Map, ChevronDown, Heart, MessageCircle, MapPin } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import { getRestaurantPosts } from "../services/posts";
+import { getNearbyRestaurants } from "../services/restaurants";
 import { Post, Restaurant, UserLocation, timeAgo } from "../types";
 import TopBar from "../components/layout/TopBar";
 import MapView from "../components/map/MapView";
 import MapErrorBoundary from "../components/map/MapErrorBoundary";
+import { useLikes } from "../hooks/useLikes";
 import ResizableSplit from "../components/layout/ResizableSplit";
 
 interface FeedCursor {
@@ -16,12 +18,16 @@ interface FeedCursor {
   done: boolean;
 }
 
-const BATCH_SIZE = 6;
+const BATCH_SIZE = 10;
+const RESTAURANT_LIMIT = 50;
+const RADII = [10_000, 30_000, 100_000, 500_000];
 
 export default function ShortsPage() {
   const { location, restaurants, restaurantsLoading, locationLoading } = useApp();
+  const routerLocation = useLocation();
+  const initialPost: Post | null = (routerLocation.state as { initialPost?: Post })?.initialPost ?? null;
 
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [posts, setPosts] = useState<Post[]>(initialPost ? [initialPost] : []);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -30,18 +36,60 @@ export default function ShortsPage() {
   const cursorsRef = useRef<FeedCursor[]>([]);
   const [hasMore, setHasMore] = useState(true);
   const fetchingRef = useRef(false);
+  const expandingRef = useRef(false);
+  const radiusIdxRef = useRef(0);
+  const usedIdsRef = useRef(new Set<string>());
+  const locationRef = useRef(location);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
 
+  useEffect(() => { locationRef.current = location; }, [location]);
+
+  const addRestaurants = useCallback((list: Restaurant[]) => {
+    const fresh = list.filter((r) => !usedIdsRef.current.has(r.id));
+    fresh.forEach((r) => usedIdsRef.current.add(r.id));
+    const newCursors: FeedCursor[] = fresh.map((r) => ({
+      restaurantId: r.id,
+      nextBefore: null,
+      done: false,
+    }));
+    cursorsRef.current = [...cursorsRef.current, ...newCursors];
+    return fresh.length;
+  }, []);
+
+  const expandFeed = useCallback(async (): Promise<boolean> => {
+    if (expandingRef.current) return false;
+    const loc = locationRef.current;
+    if (!loc) return false;
+    const nextIdx = radiusIdxRef.current + 1;
+    if (nextIdx >= RADII.length) return false;
+    expandingRef.current = true;
+    radiusIdxRef.current = nextIdx;
+    try {
+      const list = await getNearbyRestaurants(loc.lat, loc.lng, RADII[nextIdx], RESTAURANT_LIMIT);
+      const added = addRestaurants(list);
+      return added > 0;
+    } catch {
+      return false;
+    } finally {
+      expandingRef.current = false;
+    }
+  }, [addRestaurants]);
+
   const loadBatch = useCallback(async () => {
     if (fetchingRef.current) return;
-    const cursors = cursorsRef.current;
-    const idx = cursors.findIndex((c) => !c.done);
-    if (idx === -1) { setHasMore(false); return; }
+
+    let idx = cursorsRef.current.findIndex((c) => !c.done);
+    if (idx === -1) {
+      const expanded = await expandFeed();
+      if (!expanded) { setHasMore(false); return; }
+      idx = cursorsRef.current.findIndex((c) => !c.done);
+      if (idx === -1) { setHasMore(false); return; }
+    }
 
     fetchingRef.current = true;
-    const cursor = cursors[idx];
+    const cursor = cursorsRef.current[idx];
     try {
       const response = await getRestaurantPosts(cursor.restaurantId, BATCH_SIZE, cursor.nextBefore ?? undefined);
       if (response.data.length > 0) {
@@ -51,39 +99,41 @@ export default function ShortsPage() {
         });
       }
       const exhausted = response.data.length < BATCH_SIZE || !response.next_before;
-      const updated = [...cursors];
+      const updated = [...cursorsRef.current];
       updated[idx] = { ...cursor, nextBefore: response.next_before, done: exhausted };
       cursorsRef.current = updated;
-      setHasMore(updated.some((c) => !c.done));
+      setHasMore(true);
     } catch {
-      const updated = [...cursors];
+      const updated = [...cursorsRef.current];
       updated[idx] = { ...cursor, done: true };
       cursorsRef.current = updated;
-      setHasMore(updated.some((c) => !c.done));
     } finally {
       fetchingRef.current = false;
     }
-  }, []);
+  }, [expandFeed]);
 
   useEffect(() => {
-    if (locationLoading || restaurantsLoading) return;
+    if (locationLoading) return;
     if (initialized.current) return;
     initialized.current = true;
-    if (restaurants.length === 0) { setLoading(false); setHasMore(false); return; }
-    cursorsRef.current = restaurants.slice(0, 5).map((r) => ({
-      restaurantId: r.id,
-      nextBefore: null,
-      done: false,
-    }));
-    loadBatch().finally(() => setLoading(false));
-  }, [locationLoading, restaurantsLoading, restaurants, loadBatch]);
+
+    const loc = locationRef.current;
+    if (!loc) { setLoading(false); return; }
+
+    getNearbyRestaurants(loc.lat, loc.lng, RADII[0], RESTAURANT_LIMIT)
+      .then((list) => {
+        addRestaurants(list);
+        return loadBatch();
+      })
+      .finally(() => setLoading(false));
+  }, [locationLoading, addRestaurants, loadBatch]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && !fetchingRef.current && !loading) {
+        if (entry.isIntersecting && !fetchingRef.current && !expandingRef.current && !loading) {
           setLoadingMore(true);
           loadBatch().finally(() => setLoadingMore(false));
         }
@@ -134,7 +184,7 @@ export default function ShortsPage() {
       className="shorts-container h-full bg-dark"
       onScroll={handleScroll}
     >
-      {(locationLoading || restaurantsLoading || loading)
+      {(locationLoading || loading)
         ? <div className="shorts-item flex items-center justify-center bg-dark"><Loader color="michelin" size={32} /></div>
         : posts.length === 0
           ? (
@@ -179,7 +229,7 @@ export default function ShortsPage() {
       <div className="fixed inset-0 pb-14">
         <TopBar />
         {toggleBtn}
-        <div className="absolute inset-x-0 bottom-0" style={{ top: 56 }}>
+        <div className="absolute inset-x-0 bottom-0" style={{ top: 0 }}>
           <ResizableSplit
             top={mapPanel}
             bottom={shortsScroll}
@@ -205,6 +255,7 @@ export default function ShortsPage() {
 
 function ShortItem({ post }: { post: Post }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const { isLiked, toggle } = useLikes();
 
   useEffect(() => {
     const video = videoRef.current;
@@ -264,8 +315,19 @@ function ShortItem({ post }: { post: Post }) {
           </div>
 
           <div className="flex flex-col items-center gap-5 mb-1">
-            <ActionIcon variant="transparent" color="white" size="xl" aria-label="Like">
-              <Heart size={26} strokeWidth={1.8} />
+            <ActionIcon
+              variant="transparent"
+              color="white"
+              size="xl"
+              aria-label="Like"
+              onClick={() => toggle(post.post_id)}
+            >
+              <Heart
+                size={26}
+                strokeWidth={1.8}
+                fill={isLiked(post.post_id) ? "#ff4d6d" : "none"}
+                color={isLiked(post.post_id) ? "#ff4d6d" : "white"}
+              />
             </ActionIcon>
             <ActionIcon variant="transparent" color="white" size="xl" aria-label="Comment">
               <MessageCircle size={26} strokeWidth={1.8} />

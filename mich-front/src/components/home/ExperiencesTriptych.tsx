@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Skeleton } from "@mantine/core";
 import { getRandomPosts } from "../../services/posts";
 import { Post } from "../../types";
@@ -7,6 +7,7 @@ import { Post } from "../../types";
 export default function ExperiencesTriptych() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     getRandomPosts(3)
@@ -30,11 +31,11 @@ export default function ExperiencesTriptych() {
   return (
     <div className="grid grid-cols-3 gap-2">
       {posts.map((post, idx) => (
-        <Link
+        <div
           key={post.post_id}
-          to={post.restaurant_id ? `/restaurant/${post.restaurant_id}` : "/shorts"}
-          className="relative rounded-xl overflow-hidden bg-dark block"
-          style={{ aspectRatio: "2/3" }}
+          onClick={() => navigate("/shorts", { state: { initialPost: post } })}
+          className="relative rounded-xl overflow-hidden block cursor-pointer"
+          style={{ aspectRatio: "2/3", background: "#111" }}
         >
           {post.thumbnail_url || post.media_url ? (
             <img
@@ -42,9 +43,7 @@ export default function ExperiencesTriptych() {
               alt={post.restaurant_name ?? `Post ${idx + 1}`}
               className="absolute inset-0 w-full h-full object-cover"
             />
-          ) : (
-            <div className="absolute inset-0 bg-black/20" />
-          )}
+          ) : null}
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-2">
             {post.restaurant_name && (
@@ -53,7 +52,7 @@ export default function ExperiencesTriptych() {
               </p>
             )}
           </div>
-        </Link>
+        </div>
       ))}
     </div>
   );

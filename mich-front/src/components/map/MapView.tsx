@@ -27,8 +27,8 @@ function makeMarker(award: string | null) {
   const bg = awardColor(award);
   return L.divIcon({
     className: "",
-    html: `<div style="background:${bg};color:#fff;font-size:11px;font-weight:700;padding:4px 7px;border-radius:20px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);border:2px solid #fff;">${stars || "●"}</div>`,
-    iconAnchor: [20, 12],
+    iconSize: [0, 0],
+    html: `<div style="background:${bg};color:#fff;font-size:11px;font-weight:700;padding:4px 8px;border-radius:20px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);border:2px solid #fff;transform:translate(-50%,-50%);display:inline-block;">${stars || "●"}</div>`,
   });
 }
 
@@ -37,6 +37,19 @@ function RecenterMap({ center }: { center: [number, number] }) {
   useEffect(() => {
     map.setView(center, map.getZoom());
   }, [center, map]);
+  return null;
+}
+
+function MapResizeWatcher() {
+  const map = useMap();
+  useEffect(() => {
+    const container = map.getContainer();
+    const observer = new ResizeObserver(() => {
+      map.invalidateSize({ animate: false });
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [map]);
   return null;
 }
 
@@ -138,10 +151,12 @@ export default function MapView({ location, restaurants, zoom = 13, interactive 
       dragging={interactive}
       scrollWheelZoom={interactive}
       doubleClickZoom={interactive}
+      keepBuffer={6}
       style={{ height: "100%", width: "100%" }}
     >
       <TileLayer url={CARTO_TILE} attribution={CARTO_ATTR} />
       <RecenterMap center={[location.lat, location.lng]} />
+      <MapResizeWatcher />
       {restaurants.map((r) => {
         if (!r.latitude || !r.longitude) return null;
         return (
@@ -150,7 +165,7 @@ export default function MapView({ location, restaurants, zoom = 13, interactive 
             position={[r.latitude, r.longitude]}
             icon={makeMarker(r.michelin_award)}
           >
-            <Popup>
+            <Popup closeButton={false}>
               <RestaurantPopup r={r} />
             </Popup>
           </Marker>
