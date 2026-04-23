@@ -1,3 +1,9 @@
 .env
 */target/
 */all_restaurants.jsonl
+media/*
+*.sh
+
+app-design/Capture_decran_2026-04-23_a_11.45.57.png
+
+logs/

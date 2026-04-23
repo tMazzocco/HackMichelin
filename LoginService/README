@@ -1,0 +1,188 @@
+# LoginService
+
+Rust microservice for authentication. Issues short-lived JWT access tokens and long-lived refresh tokens. Publishes a `user.registered` MQTT event on successful signup so SearchService can index the new user.
+
+---
+
+## Architecture
+
+```
+Client
+  │
+  ▼
+Nginx ──HTTP──▶ LoginService :3002
+                      │
+              ┌───────┴───────────┐
+              │                   │
+         PostgreSQL           MQTT Broker
+         (users,               (user.registered)
+          refresh_tokens)
+```
+
+---
+
+## HTTP Endpoints
+
+All endpoints are prefixed `/api/auth/` by Nginx. Internally the service binds them at the root path.
+
+---
+
+### `POST /register`
+
+Create a new account.
+
+**Body:**
+```json
+{ "username": "alice", "email": "alice@example.com", "password": "s3cr3t" }
+```
+
+**Response `201`:**
+```json
+{
+  "token": "<jwt>",
+  "refresh_token": "<opaque-token>",
+  "user": { "id": "<uuid>", "username": "alice", "email": "alice@example.com" }
+}
+```
+
+**Errors:**
+
+| Code | Reason |
+|------|--------|
+| 409  | Username or email already taken |
+| 422  | Validation failure |
+
+On success, a `user.registered` MQTT event is published for SearchService.
+
+---
+
+### `POST /login`
+
+Authenticate with email and password.
+
+**Body:**
+```json
+{ "email": "alice@example.com", "password": "s3cr3t" }
+```
+
+**Response `200`:** Same shape as `/register`.
+
+**Errors:**
+
+| Code | Reason |
+|------|--------|
+| 401  | Wrong credentials |
+
+---
+
+### `POST /refresh`
+
+Exchange a valid refresh token for a new access token.
+
+**Body:**
+```json
+{ "refresh_token": "<opaque-token>" }
+```
+
+**Response `200`:**
+```json
+{ "token": "<new-jwt>", "refresh_token": "<same-token>" }
+```
+
+**Errors:**
+
+| Code | Reason |
+|------|--------|
+| 401  | Token expired or not found |
+
+---
+
+### `POST /logout`
+
+Revoke a refresh token.
+
+**Body:**
+```json
+{ "refresh_token": "<opaque-token>" }
+```
+
+**Response `200`:** `{ "message": "logged out" }`
+
+---
+
+## Token Design
+
+| Token        | Lifetime | Storage |
+|--------------|----------|---------|
+| Access (JWT) | 15 min   | Client memory / header |
+| Refresh      | 30 days  | `refresh_tokens` table (SHA-256 hash of raw token) |
+
+JWTs are validated **locally** in every other service using the shared `JWT_SECRET` — no round-trip to LoginService on each request.
+
+Expired refresh rows are cleaned up with:
+```sql
+DELETE FROM refresh_tokens WHERE expires_at < NOW();
+```
+
+---
+
+## PostgreSQL Tables
+
+- `users` — stores credentials; id is a UUID generated with `gen_random_uuid()`
+- `refresh_tokens` — `token_hash VARCHAR(64) PK`, `user_id UUID FK`, `expires_at TIMESTAMPTZ`
+
+---
+
+## Configuration
+
+```env
+DATABASE_URL=postgresql://admin:changeme@localhost:5432/hackmichelin
+HTTP_ADDR=0.0.0.0:3002
+JWT_SECRET=changeme
+JWT_EXPIRY_SECONDS=900
+REFRESH_TOKEN_DAYS=30
+MQTT_HOST=localhost
+MQTT_PORT=1883
+MQTT_CLIENT_ID=login-service
+RUST_LOG=info
+```
+
+---
+
+## Local Development
+
+```bash
+cp .env.example .env
+cargo run
+```
+
+```bash
+# Register
+curl -X POST http://localhost:3002/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","email":"alice@example.com","password":"s3cr3t"}'
+
+# Login
+curl -X POST http://localhost:3002/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"alice@example.com","password":"s3cr3t"}'
+```
+
+---
+
+## Project Structure
+
+```
+LoginService/
+├── src/
+│   ├── main.rs     # Entry point
+│   ├── config.rs   # Env-var config
+│   ├── db.rs       # PostgreSQL queries (create_user, find_by_email, refresh token CRUD)
+│   ├── models.rs   # UserRow, AuthResponse, request types
+│   ├── auth.rs     # JWT sign / verify, password hashing (bcrypt)
+│   ├── http.rs     # Axum router and handlers
+│   ├── mqtt.rs     # MQTT publisher
+│   └── error.rs    # AppError → HTTP response
+├── Cargo.toml
+└── .env.example
+```

@@ -1,0 +1,144 @@
+# SearchService
+
+Rust microservice for full-text and faceted search backed by Elasticsearch. Keeps its indices current by subscribing to `user.registered` and `user.updated` MQTT events. The restaurant index is seeded at startup by the importer.
+
+---
+
+## Architecture
+
+```
+Client
+  │
+  ▼
+Nginx ──HTTP──▶ SearchService :3006
+                      │
+              ┌───────┴──────────┐
+              │                  │
+        Elasticsearch        MQTT Broker
+        (restaurants,        (user.registered,
+         users indices)       user.updated)
+```
+
+---
+
+## HTTP Endpoints
+
+All endpoints are prefixed `/api/search/` by Nginx.
+
+---
+
+### `GET /restaurants`
+
+Full-text + faceted search over the Michelin restaurant index.
+
+**Query parameters:**
+
+| Parameter | Type   | Description |
+|-----------|--------|-------------|
+| `q`       | string | Free-text query (name, chef, city, description) |
+| `city`    | string | Exact city filter |
+| `country` | string | Exact country code filter (e.g. `FR`) |
+| `award`   | string | Michelin award filter (e.g. `THREE_STARS`) |
+| `lat`     | float  | *(reserved)* geo centre latitude |
+| `lng`     | float  | *(reserved)* geo centre longitude |
+| `radius`  | string | *(reserved)* geo radius |
+
+All parameters are optional. With no parameters, returns the top 20 documents.
+
+**Response `200`:**
+```json
+[
+  {
+    "objectID": "134469",
+    "name": "Le Gabriel - La Réserve Paris",
+    "city": "Paris",
+    "country_code": "FR",
+    "michelin_award": "THREE_STARS",
+    "green_star": false,
+    "guide_year": 2026,
+    "cuisines": ["French Contemporary"],
+    "latitude": 48.8697,
+    "longitude": 2.3132
+  }
+]
+```
+
+Field boosting: `name^3`, `chef^2`, `city`, `country_name`, `region_name`.
+
+---
+
+### `GET /users`
+
+Full-text search over the users index.
+
+**Query parameters:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `q`       | yes      | Free-text query |
+
+**Response `200`:** Array of user documents (`user_id`, `username`, `bio`, `avatar_url`).
+
+Field boosting: `username^2`, `bio`.
+
+---
+
+## Elasticsearch Indices
+
+### `restaurants`
+Seeded by `init/import/import.py` at startup. Fields include geo point (`location`), all string descriptors, cuisine and facility arrays.
+
+### `users`
+Created at startup with the correct mapping. Populated at runtime via MQTT events:
+
+| MQTT topic       | Action |
+|------------------|--------|
+| `user.registered` | Full index (PUT) of the new user document |
+| `user.updated`    | Partial update (`doc`) of bio and avatar_url |
+
+---
+
+## Configuration
+
+```env
+HTTP_ADDR=0.0.0.0:3006
+ES_HOST=http://localhost:9200
+MQTT_HOST=localhost
+MQTT_PORT=1883
+MQTT_CLIENT_ID=search-service
+RUST_LOG=info
+```
+
+---
+
+## Local Development
+
+```bash
+cp .env.example .env
+cargo run
+```
+
+```bash
+# Search restaurants in Paris
+curl "http://localhost:3006/restaurants?q=bistro&city=Paris"
+
+# Search users
+curl "http://localhost:3006/users?q=alice"
+```
+
+---
+
+## Project Structure
+
+```
+SearchService/
+├── src/
+│   ├── main.rs      # Entry point
+│   ├── config.rs    # Env-var config
+│   ├── es.rs        # Elasticsearch queries: search_restaurants, search_users, index_user, update_user
+│   ├── handlers.rs  # Axum handlers
+│   ├── mqtt.rs      # MQTT subscriber — user.registered / user.updated
+│   └── error.rs     # AppError → HTTP response
+├── Cargo.toml
+└── .env.example
+```
