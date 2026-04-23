@@ -4,7 +4,7 @@ import { Restaurant } from "../types";
 export async function getNearbyRestaurants(
   lat: number,
   lng: number,
-  radius = 5000,
+  radius = 15000,
   limit = 20
 ): Promise<Restaurant[]> {
   const { data } = await api.get("/api/maps/restaurants/nearby", {

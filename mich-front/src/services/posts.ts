@@ -32,7 +32,7 @@ export async function getRandomPosts(limit = 3): Promise<Post[]> {
 
 export async function getRestaurantPosts(
   restaurantId: string,
-  limit = 10,
+  limit = 30,
   before?: string
 ): Promise<PostsResponse> {
   const [postsData, restaurant] = await Promise.all([

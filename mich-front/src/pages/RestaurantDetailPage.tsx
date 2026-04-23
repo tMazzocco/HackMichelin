@@ -167,12 +167,23 @@ export default function RestaurantDetailPage() {
             {posts.map((post) => {
               const thumb = post.thumbnail_url ?? post.media_url;
               return (
-                <div key={post.post_id} className="aspect-square rounded-lg overflow-hidden bg-black/10 relative">
+                <div
+                  key={post.post_id}
+                  className="aspect-square rounded-lg overflow-hidden bg-black/10 relative cursor-pointer"
+                  onClick={() => navigate("/shorts", { state: { initialPost: post } })}
+                >
                   {thumb ? (
                     <img src={thumb} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <Text size="xs" c="dimmed">No media</Text>
+                    </div>
+                  )}
+                  {post.media_type === "video" && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <div style={{ width: 0, height: 0, borderTop: "6px solid transparent", borderBottom: "6px solid transparent", borderLeft: "10px solid white", marginLeft: 2 }} />
+                      </div>
                     </div>
                   )}
                   {post.rating && (

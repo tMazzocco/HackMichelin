@@ -8,17 +8,75 @@ import { Loader } from "@mantine/core";
 import { Restaurant, awardStars, formatDistance } from "../types";
 import { Link } from "react-router-dom";
 
+interface FilterChip {
+  id: string;
+  label: string;
+  apply: (r: Restaurant) => boolean;
+}
+
+const FILTERS: FilterChip[] = [
+  { id: "3star",   label: "★★★",          apply: (r) => r.michelin_award === "THREE_STARS" },
+  { id: "2star",   label: "★★",            apply: (r) => r.michelin_award === "TWO_STARS" },
+  { id: "1star",   label: "★",             apply: (r) => r.michelin_award === "ONE_STAR" },
+  { id: "bib",     label: "● Bib Gourmand", apply: (r) => r.michelin_award === "BIB_GOURMAND" },
+  { id: "green",   label: "🌿 Green Star",  apply: (r) => !!r.green_star },
+  { id: "booking", label: "📅 Bookable",    apply: (r) => !!r.online_booking },
+  { id: "delivery",label: "🛵 Delivery",    apply: (_) => false },
+  { id: "terrace", label: "☀️ Terrace",     apply: (_) => false },
+  { id: "open",    label: "🟢 Open now",    apply: (_) => false },
+  { id: "cheap",   label: "💶 Budget",      apply: (r) => r.price_category_label?.includes("€") === true && !r.price_category_label?.includes("€€") },
+];
+
+function Chip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flexShrink: 0,
+        background: active ? "#AB152E" : "rgba(255,255,255,0.92)",
+        color: active ? "#fff" : "#222",
+        border: active ? "none" : "1px solid rgba(0,0,0,0.1)",
+        borderRadius: 99,
+        padding: "6px 14px",
+        fontSize: 13,
+        fontWeight: active ? 700 : 500,
+        cursor: "pointer",
+        backdropFilter: "blur(8px)",
+        boxShadow: active ? "0 2px 10px rgba(171,21,46,0.35)" : "0 2px 8px rgba(0,0,0,0.08)",
+        transition: "all 0.15s",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 export default function MapPage() {
   const { location, restaurants, restaurantsLoading } = useApp();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Restaurant | null>(null);
+  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
 
-  const filtered = query.trim()
-    ? restaurants.filter((r) =>
-        r.name.toLowerCase().includes(query.toLowerCase()) ||
-        (r.city ?? "").toLowerCase().includes(query.toLowerCase())
-      )
-    : restaurants;
+  const toggleFilter = useCallback((id: string) => {
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const filtered = restaurants.filter((r) => {
+    const matchesQuery = !query.trim() ||
+      r.name.toLowerCase().includes(query.toLowerCase()) ||
+      (r.city ?? "").toLowerCase().includes(query.toLowerCase());
+
+    const matchesFilters = activeFilters.size === 0 ||
+      FILTERS.filter((f) => activeFilters.has(f.id)).some((f) => f.apply(r));
+
+    return matchesQuery && matchesFilters;
+  });
 
   const handleClear = useCallback(() => {
     setQuery("");
@@ -28,7 +86,7 @@ export default function MapPage() {
   return (
     <div className="fixed inset-0 flex flex-col">
       {/* Search bar */}
-      <div className="absolute top-4 inset-x-4 z-[1000]">
+      <div className="absolute top-4 inset-x-4 z-[1000]" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <TextInput
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -45,16 +103,43 @@ export default function MapPage() {
           }
           styles={{
             input: {
-              background: "rgba(var(--background-rgb, 251,251,254),0.95)",
+              background: "rgba(251,251,254,0.95)",
               backdropFilter: "blur(12px)",
               boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
             },
           }}
         />
 
-        {/* Filtered list dropdown */}
+        {/* Filter chips */}
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2 }} className="no-scrollbar">
+          {FILTERS.map((f) => (
+            <Chip
+              key={f.id}
+              label={f.label}
+              active={activeFilters.has(f.id)}
+              onClick={() => toggleFilter(f.id)}
+            />
+          ))}
+        </div>
+
+        {/* Active filter result count */}
+        {activeFilters.size > 0 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <Text size="xs" style={{ color: "rgba(255,255,255,0.9)", textShadow: "0 1px 4px rgba(0,0,0,0.5)", fontWeight: 600 }}>
+              {filtered.length} restaurant{filtered.length !== 1 ? "s" : ""}
+            </Text>
+            <button
+              onClick={() => setActiveFilters(new Set())}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.75)", fontSize: 12, textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}
+            >
+              Clear filters
+            </button>
+          </div>
+        )}
+
+        {/* Search dropdown */}
         {query.trim() && filtered.length > 0 && (
-          <Paper radius="xl" shadow="xl" mt={4} style={{ overflow: "hidden", maxHeight: 224, overflowY: "auto", border: "1px solid rgba(0,0,0,0.08)" }}>
+          <Paper radius="xl" shadow="xl" style={{ overflow: "hidden", maxHeight: 224, overflowY: "auto", border: "1px solid rgba(0,0,0,0.08)" }}>
             {filtered.slice(0, 10).map((r) => (
               <button
                 key={r.id}

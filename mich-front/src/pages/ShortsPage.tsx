@@ -20,7 +20,7 @@ interface FeedCursor {
 
 const BATCH_SIZE = 10;
 const RESTAURANT_LIMIT = 50;
-const RADII = [10_000, 30_000, 100_000, 500_000];
+const RADII = [20_000, 75_000, 250_000, 1_000_000];
 
 export default function ShortsPage() {
   const { location, restaurants, restaurantsLoading, locationLoading } = useApp();
@@ -40,9 +40,9 @@ export default function ShortsPage() {
   const radiusIdxRef = useRef(0);
   const usedIdsRef = useRef(new Set<string>());
   const locationRef = useRef(location);
+  const prevLocKeyRef = useRef<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const initialized = useRef(false);
 
   useEffect(() => { locationRef.current = location; }, [location]);
 
@@ -113,20 +113,30 @@ export default function ShortsPage() {
   }, [expandFeed]);
 
   useEffect(() => {
-    if (locationLoading) return;
-    if (initialized.current) return;
-    initialized.current = true;
+    if (locationLoading || !location) return;
 
-    const loc = locationRef.current;
-    if (!loc) { setLoading(false); return; }
+    const key = `${location.lat.toFixed(2)},${location.lng.toFixed(2)}`;
+    if (key === prevLocKeyRef.current) return;
+    prevLocKeyRef.current = key;
 
-    getNearbyRestaurants(loc.lat, loc.lng, RADII[0], RESTAURANT_LIMIT)
+    const isFirstMount = prevLocKeyRef.current === null;
+    cursorsRef.current = [];
+    usedIdsRef.current = new Set();
+    radiusIdxRef.current = 0;
+    fetchingRef.current = false;
+    expandingRef.current = false;
+    setHasMore(true);
+    setLoading(true);
+    setPosts(isFirstMount && initialPost ? [initialPost] : []);
+
+    getNearbyRestaurants(location.lat, location.lng, RADII[0], RESTAURANT_LIMIT)
       .then((list) => {
         addRestaurants(list);
         return loadBatch();
       })
+      .catch(() => {})
       .finally(() => setLoading(false));
-  }, [locationLoading, addRestaurants, loadBatch]);
+  }, [location, locationLoading, addRestaurants, loadBatch]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -184,16 +194,16 @@ export default function ShortsPage() {
       className="shorts-container h-full bg-dark"
       onScroll={handleScroll}
     >
-      {(locationLoading || loading)
-        ? <div className="shorts-item flex items-center justify-center bg-dark"><Loader color="michelin" size={32} /></div>
-        : posts.length === 0
-          ? (
+      {posts.length === 0
+        ? (locationLoading || loading)
+          ? <div className="shorts-item flex items-center justify-center" style={{ background: "#111" }}><Loader color="michelin" size={32} /></div>
+          : (
             <div className="shorts-item flex flex-col items-center justify-center gap-3">
               <Text fw={600} c="white" style={{ opacity: 0.4 }}>No experiences yet</Text>
               <Text size="sm" c="white" style={{ opacity: 0.3 }}>Be the first to share a restaurant moment.</Text>
             </div>
           )
-          : posts.map((post) => <ShortItem key={post.post_id} post={post} />)
+        : posts.map((post) => <ShortItem key={post.post_id} post={post} />)
       }
 
       {!loading && posts.length > 0 && (
@@ -255,6 +265,7 @@ export default function ShortsPage() {
 
 function ShortItem({ post }: { post: Post }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const playPromiseRef = useRef<Promise<void> | null>(null);
   const { isLiked, toggle } = useLikes();
 
   useEffect(() => {
@@ -262,8 +273,15 @@ function ShortItem({ post }: { post: Post }) {
     if (!video) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) video.play().catch(() => {});
-        else video.pause();
+        if (entry.isIntersecting) {
+          playPromiseRef.current = video.play();
+          playPromiseRef.current?.catch(() => {});
+        } else {
+          const p = playPromiseRef.current;
+          playPromiseRef.current = null;
+          if (p) p.then(() => video.pause()).catch(() => {});
+          else video.pause();
+        }
       },
       { threshold: 0.5 }
     );
@@ -282,6 +300,8 @@ function ShortItem({ post }: { post: Post }) {
           src={post.media_url}
           className="absolute inset-0 w-full h-full object-cover"
           loop muted playsInline
+          preload="none"
+          poster={post.thumbnail_url ?? undefined}
         />
       ) : media ? (
         <img src={media} alt="" className="absolute inset-0 w-full h-full object-cover" />
@@ -303,7 +323,19 @@ function ShortItem({ post }: { post: Post }) {
                 {post.restaurant_name}
               </Link>
             )}
-            <Text fw={600} size="sm" c="white">{post.username ?? "Anonymous"}</Text>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Text fw={600} size="sm" c="white">{post.username ?? "Anonymous"}</Text>
+              {post.username && (
+                <div style={{ display: "flex", alignItems: "center", gap: 3, background: "rgba(171,21,46,0.75)", borderRadius: 20, padding: "1px 7px" }}>
+                  <svg viewBox="0 0 24 24" width="9" height="9" fill="white">
+                    <path d="M12,2 L14.5,7.67 L20.66,7 L17,12 L20.66,17 L14.5,16.33 L12,22 L9.5,16.33 L3.34,17 L7,12 L3.34,7 L9.5,7.67 Z" />
+                  </svg>
+                  <Text size="xs" fw={700} c="white" style={{ lineHeight: 1 }}>
+                    {(post.username.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % 72) + 3}
+                  </Text>
+                </div>
+              )}
+            </div>
             {post.caption && (
               <Text size="sm" c="white" style={{ opacity: 0.8 }} lineClamp={2} mt={4}>
                 {post.caption}

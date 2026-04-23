@@ -10,7 +10,7 @@ import ArticleDetailPage from "./pages/ArticleDetailPage";
 import RestaurantDetailPage from "./pages/RestaurantDetailPage";
 import ProfilePage from "./pages/ProfilePage";
 
-const HIDE_TOPBAR_ROUTES = ["/shorts", "/map", "/restaurant", "/articles"];
+const HIDE_TOPBAR_ROUTES = ["/shorts", "/map", "/restaurant", "/articles", "/profile"];
 
 function Layout() {
   const { pathname } = useLocation();

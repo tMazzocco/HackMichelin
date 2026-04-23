@@ -44,7 +44,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!location) return;
     setRestaurantsLoading(true);
     setRestaurantsError(false);
-    getNearbyRestaurants(location.lat, location.lng)
+    getNearbyRestaurants(location.lat, location.lng, 20_000, 50)
       .then((data) => { setRestaurants(data); setRestaurantsError(false); })
       .catch(() => { setRestaurants([]); setRestaurantsError(true); })
       .finally(() => setRestaurantsLoading(false));

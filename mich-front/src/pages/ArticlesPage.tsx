@@ -4,7 +4,7 @@ import { articles } from "../data/articles";
 
 export default function ArticlesPage() {
   return (
-    <div className="page pb-20 px-4" style={{ paddingTop: 56 }}>
+    <div className="page pb-20 px-4 pt-4">
       <Title order={2} fw={700} mt="md" mb="lg">Articles</Title>
       <Stack gap="md">
         {articles.map((a) => (
