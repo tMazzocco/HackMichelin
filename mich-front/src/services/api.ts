@@ -1,10 +1,9 @@
 import axios from "axios";
 
-// VITE_BACK_URL points to the Nginx API gateway (e.g. http://localhost:80).
-// When set, axios uses it as the base for every request and the Vite dev proxy
-// is bypassed. When absent (empty string), relative paths are used and the Vite
-// proxy routes each /api/* prefix to the correct microservice port.
-const baseURL = import.meta.env.VITE_BACK_URL ?? "";
+// Always use relative paths so requests go through the Vite dev proxy,
+// which forwards /api/* to VITE_BACK_URL (or http://localhost:80 by default).
+// This avoids browser CORS restrictions entirely.
+const baseURL = "";
 
 const api = axios.create({ baseURL, timeout: 10000 });
 
