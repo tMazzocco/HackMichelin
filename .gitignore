@@ -1,3 +1,5 @@
 .env
 */target/
 */all_restaurants.jsonl
+media/*
+*.sh

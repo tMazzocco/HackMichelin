@@ -1,0 +1,242 @@
+# MapsDataService
+
+Rust microservice for geographic restaurant queries against the HackMichelin PostgreSQL dataset.
+Exposes both an **HTTP API** (consumed by Nginx upstream) and an **MQTT interface** (request/reply pattern over the shared broker).
+
+---
+
+## Architecture
+
+```
+Client
+  │
+  ▼
+Nginx  ──HTTP──▶  MapsDataService :3000
+  │                     │
+  │              ┌──────┴──────────┐
+  │              │                 │
+MQTT Broker ◀───┘           PostgreSQL
+(Mosquitto)                  (restaurants)
+```
+
+- Nginx proxies HTTP requests to this service.
+- Other microservices can query via MQTT publish/subscribe (request–reply).
+- All restaurant data lives in PostgreSQL, pre-loaded from `all_restaurants.jsonl`.
+- Geographic data is normalized: `restaurants` references `cities` → `countries`; award data references `michelin_awards`.
+
+---
+
+## HTTP Endpoints
+
+### `GET /health`
+Liveness probe used by Nginx and Docker health checks.
+
+**Response:** `200 ok`
+
+---
+
+### `GET /restaurants/nearby`
+Returns Michelin restaurants within a given radius of a geographic point, sorted by distance ascending.
+
+**Query parameters:**
+
+| Parameter | Type  | Required | Default | Max    | Description                  |
+|-----------|-------|----------|---------|--------|------------------------------|
+| `lat`     | float | yes      | —       | —      | Latitude in decimal degrees  |
+| `lng`     | float | yes      | —       | —      | Longitude in decimal degrees |
+| `radius`  | float | no       | 1000    | 50 000 | Search radius in metres      |
+| `limit`   | int   | no       | 20      | 100    | Max results to return        |
+
+**Example:**
+```
+GET /restaurants/nearby?lat=48.8566&lng=2.3522&radius=3000&limit=5
+```
+
+**Response `200`:**
+```json
+[
+  {
+    "id": "134469",
+    "name": "Le Gabriel - La Réserve Paris",
+    "slug": "le-gabriel476630",
+    "chef": null,
+    "latitude": 48.8697,
+    "longitude": 2.3132,
+    "city": "Paris",
+    "country_code": "FR",
+    "country_name": "France",
+    "region_name": "Île-de-France",
+    "area_name": null,
+    "michelin_award": "THREE_STARS",
+    "distinction_score": 5,
+    "guide_year": 2026,
+    "green_star": false,
+    "price_category_label": "Spare no expense",
+    "main_image_url": "https://...",
+    "online_booking": true,
+    "take_away": false,
+    "delivery": false,
+    "distance_meters": 1423.7,
+    "total_posts": 12,
+    "good_pct": 0.916
+  }
+]
+```
+
+> `city`, `country_code`, `country_name`, `region_name` and `michelin_award` are resolved via JOINs on the `cities`, `countries` and `michelin_awards` lookup tables. `price_category_label` comes from a correlated subquery on `costing → price_categories`.
+
+**Error responses:**
+
+| Code | Reason                              |
+|------|-------------------------------------|
+| 400  | `lat`/`lng` out of range, radius ≤ 0 |
+| 500  | Database error                       |
+
+---
+
+### `GET /restaurants/:id`
+Returns the full record for a single restaurant by its Michelin `objectID`.
+
+**Example:**
+```
+GET /restaurants/134469
+```
+
+**Response `200`:** Full restaurant object including `main_desc`.
+
+**Response `404`:** `{ "error": "not found" }`
+
+---
+
+## MQTT Interface
+
+Topics follow a **request / reply** pattern. Publish a JSON payload to the request topic; the service publishes the result to the reply topic.
+
+### Request: `maps/restaurants/nearby`
+
+**Payload:**
+```json
+{
+  "lat": 48.8566,
+  "lng": 2.3522,
+  "radius": 3000,
+  "limit": 5
+}
+```
+
+**Reply topic:** `maps/restaurants/nearby/reply` (or the MQTT 5 `response_topic` property if set by the caller)
+
+**Reply payload:**
+```json
+{ "data": [ /* same structure as HTTP nearby response */ ] }
+```
+
+---
+
+### Request: `maps/restaurants/get`
+
+**Payload:**
+```json
+{ "id": "134469" }
+```
+
+**Reply topic:** `maps/restaurants/get/reply`
+
+**Reply payload:**
+```json
+{ "data": { /* full restaurant object */ } }
+```
+
+**Error reply:**
+```json
+{ "error": "not found" }
+```
+
+---
+
+## Configuration
+
+Copy `.env.example` to `.env` and adjust:
+
+```env
+DATABASE_URL=postgresql://admin:changeme@localhost:5432/hackmichelin
+HTTP_ADDR=0.0.0.0:3000
+MQTT_HOST=localhost
+MQTT_PORT=1883
+MQTT_CLIENT_ID=maps-data-service
+RUST_LOG=info
+```
+
+All variables can also be injected directly as environment variables (e.g. in Docker Compose).
+
+---
+
+## Local Development
+
+> Tests and debug are run **outside Docker**. Make sure PostgreSQL and Mosquitto are running locally (or via `docker compose up postgres mosquitto -d`).
+
+```powershell
+# 1. Copy env
+cp .env.example .env
+
+# 2. Check compilation
+cargo check
+
+# 3. Run
+cargo run
+
+# 4. Quick smoke test
+curl "http://localhost:3000/health"
+curl "http://localhost:3000/restaurants/nearby?lat=48.8566&lng=2.3522&radius=2000"
+curl "http://localhost:3000/restaurants/134469"
+```
+
+Log level is controlled by `RUST_LOG` (e.g. `RUST_LOG=debug cargo run`).
+
+---
+
+## Docker
+
+Build and run via the root `docker-compose.yml`. The service is **not** intended to be built standalone in production — use Compose:
+
+```powershell
+# From project root
+docker compose up --build maps-data-service
+```
+
+The multi-stage `Dockerfile` produces a minimal Debian slim image (~20 MB).
+
+---
+
+## Project Structure
+
+```
+MapsDataService/
+├── src/
+│   ├── main.rs      # Entry point — starts HTTP server + MQTT subscriber
+│   ├── config.rs    # Config loaded from environment variables
+│   ├── db.rs        # PostgreSQL queries (Haversine nearby + get by ID)
+│   ├── models.rs    # Serde + sqlx row types
+│   ├── error.rs     # AppError → axum HTTP response mapping
+│   ├── http.rs      # Axum router and handlers
+│   └── mqtt.rs      # rumqttc subscriber loop
+├── Cargo.toml
+├── Dockerfile
+└── .env.example
+```
+
+---
+
+## Dependencies
+
+| Crate              | Purpose                        |
+|--------------------|--------------------------------|
+| `axum`             | HTTP framework                 |
+| `sqlx`             | Async PostgreSQL driver        |
+| `rumqttc`          | MQTT 5 client                  |
+| `tokio`            | Async runtime                  |
+| `serde` / `serde_json` | JSON serialisation         |
+| `tracing`          | Structured logging             |
+| `dotenvy`          | `.env` file loading            |
+| `tower-http`       | CORS / trace middleware        |
+| `thiserror` / `anyhow` | Error handling             |

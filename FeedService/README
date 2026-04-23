@@ -1,0 +1,143 @@
+# FeedService
+
+Rust microservice for personal home feeds. Uses a fan-out-on-write strategy: when a post is created, FeedService inserts one row per follower into Cassandra `user_feed`. Rows expire automatically after 30 days via a TTL.
+
+---
+
+## Architecture
+
+```
+PostService ──post.created──▶ MQTT Broker
+                                    │
+                                    ▼
+                             FeedService :3005
+                                    │
+                         ┌──────────┴───────────┐
+                         │                      │
+                     Cassandra              Cassandra
+                    (user_feed)         (user_followers)
+                    write fan-out        enumerate followers
+```
+
+On a `post.created` event: FeedService reads all followers of the post author from `user_followers`, then inserts one `user_feed` row for each follower.
+
+---
+
+## HTTP Endpoints
+
+All endpoints are prefixed `/api/feed/` by Nginx.
+
+---
+
+### `GET /` 🔒
+
+Return the personal feed for the authenticated user, newest first.
+
+**Query parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `before`  | —       | Cursor: ISO 8601 timestamp — return items older than this |
+| `limit`   | 20      | Max results (max 100) |
+
+**Response `200`:**
+```json
+[
+  {
+    "post_id": "<uuid>",
+    "author_id": "<uuid>",
+    "author_name": "bob",
+    "restaurant_id": "134469",
+    "restaurant_name": "Le Gabriel - La Réserve Paris",
+    "media_type": "photo",
+    "media_url": "/api/download/files/abc.jpg",
+    "thumbnail_url": null,
+    "caption": "Best meal of my life.",
+    "rating": "GOOD",
+    "created_at": "2024-03-10T18:22:00Z"
+  }
+]
+```
+
+---
+
+### `GET /health`
+
+Liveness probe. Returns `200 ok`.
+
+---
+
+## Cassandra Tables
+
+### `user_feed`
+Partition key: `viewer_id` — one partition per user, all their feed items.
+Clustering: `created_at DESC, post_id ASC` — reads are newest-first.
+TTL: **30 days** (`default_time_to_live = 2592000`) — old entries expire automatically without maintenance.
+
+```
+viewer_id       uuid  (partition)
+created_at      timestamp  (cluster desc)
+post_id         uuid  (cluster asc)
+author_id       uuid
+author_name     text
+restaurant_id   text
+restaurant_name text
+media_type      text
+media_url       text
+thumbnail_url   text
+caption         text
+rating          text   -- "GOOD" | "BAD"
+```
+
+### `user_followers` (read-only, written by UserService)
+Used to enumerate whom to fan-out to on `post.created`.
+
+---
+
+## MQTT Subscriptions
+
+| Topic          | Action |
+|----------------|--------|
+| `post.created` | Read author's followers from `user_followers`, insert one `user_feed` row per follower |
+
+---
+
+## Configuration
+
+```env
+CASSANDRA_NODES=localhost:9042
+HTTP_ADDR=0.0.0.0:3005
+JWT_SECRET=changeme
+MQTT_HOST=localhost
+MQTT_PORT=1883
+MQTT_CLIENT_ID=feed-service
+RUST_LOG=info
+```
+
+---
+
+## Local Development
+
+```bash
+cp .env.example .env
+cargo run
+```
+
+---
+
+## Project Structure
+
+```
+FeedService/
+├── src/
+│   ├── main.rs     # Entry point
+│   ├── config.rs   # Env-var config
+│   ├── db_cql.rs   # Cassandra: get_feed, get_followers, insert_feed_item
+│   ├── models.rs   # FeedItem
+│   ├── auth.rs     # JWT middleware
+│   ├── http.rs     # Axum router + get_feed handler
+│   ├── mqtt.rs     # MQTT subscriber — post.created fan-out
+│   └── error.rs    # AppError → HTTP response
+├── Cargo.toml
+└── .env.example
+```

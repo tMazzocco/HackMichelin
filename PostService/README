@@ -1,0 +1,260 @@
+# PostService
+
+Rust microservice for creating and retrieving photo/video posts tagged to Michelin restaurants. Writes denormalized copies to three Cassandra tables for efficient list queries, and publishes MQTT events consumed by FeedService and StatsService.
+
+---
+
+## Architecture
+
+```
+Client
+  │
+  ▼
+Nginx ──HTTP──▶ PostService :3004
+                      │
+         ┌────────────┼────────────────┐
+         │            │                │
+    PostgreSQL    Cassandra        MQTT Broker
+    (media read,  (posts,          (post.created,
+     restaurant   user_posts,       post.deleted)
+     name read)   restaurant_posts)
+```
+
+On create, PostService reads media metadata and restaurant name from PostgreSQL, then writes to all three Cassandra tables in parallel.
+
+---
+
+## HTTP Endpoints
+
+All endpoints are prefixed `/api/posts/` by Nginx.
+
+---
+
+### `POST /` 🔒
+
+Create a new post.
+
+**Body:**
+```json
+{
+  "media_id": "d3f1a2b4-...",
+  "restaurant_id": "134469",
+  "caption": "Best meal of my life.",
+  "rating": "GOOD"
+}
+```
+
+`restaurant_id` is optional. `rating` must be `"GOOD"` or `"BAD"`.
+
+**Response `201`:**
+```json
+{
+  "post_id": "e7c2b1a0-...",
+  "user_id": "a1b2c3d4-...",
+  "username": "alice",
+  "restaurant_id": "134469",
+  "restaurant_name": "Le Gabriel - La Réserve Paris",
+  "media_type": "photo",
+  "media_url": "/api/download/files/e7c2b1a0.jpg",
+  "rating": "GOOD",
+  "created_at": "2024-03-10T18:22:00Z"
+}
+```
+
+> `thumbnail_url` and `caption` are stored in Cassandra but not included in the create response. Fetch the post with `GET /:id` to retrieve all fields.
+
+**Errors:**
+
+| Code | Reason |
+|------|--------|
+| 400  | `rating` is not `GOOD` or `BAD`, or `media_id` missing |
+| 400  | `media_id` not found or belongs to a different user |
+| 404  | `restaurant_id` not found in PostgreSQL |
+
+On success, publishes a `post.created` MQTT event consumed by FeedService and StatsService.
+
+---
+
+### `GET /:id`
+
+Fetch a single post by its UUID.
+
+**Example:** `GET /api/posts/e7c2b1a0-...`
+
+**Response `200`:**
+```json
+{
+  "post_id": "e7c2b1a0-...",
+  "user_id": "a1b2c3d4-...",
+  "username": "alice",
+  "restaurant_id": "134469",
+  "restaurant_name": "Le Gabriel - La Réserve Paris",
+  "media_id": "d3f1a2b4-...",
+  "media_type": "photo",
+  "media_url": "/api/download/files/e7c2b1a0.jpg",
+  "thumbnail_url": null,
+  "caption": "Best meal of my life.",
+  "rating": "GOOD",
+  "created_at": "2024-03-10T18:22:00Z"
+}
+```
+
+**Response `404`:** `{ "error": "not found" }`
+
+---
+
+### `DELETE /:id` 🔒
+
+Delete a post. Only the post author can delete their own post.
+Publishes a `post.deleted` MQTT event so StatsService can decrement counters.
+
+**Response `204`:** No content.
+
+**Errors:**
+
+| Code | Reason |
+|------|--------|
+| 403  | Authenticated user is not the post author |
+| 404  | Post not found |
+
+---
+
+### `GET /user/:user_id`
+
+List all posts by a user, newest first. Reads from the `user_posts` Cassandra table.
+
+**Example:** `GET /api/posts/user/a1b2c3d4-...?limit=10`
+
+**Query parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `before`  | now     | Cursor: ISO 8601 timestamp — return posts older than this |
+| `limit`   | 20      | Max results (max 100) |
+
+**Response `200`:**
+```json
+{
+  "data": [
+    {
+      "post_id": "e7c2b1a0-...",
+      "user_id": "a1b2c3d4-...",
+      "username": null,
+      "restaurant_id": "134469",
+      "restaurant_name": "Le Gabriel - La Réserve Paris",
+      "media_id": null,
+      "media_type": "photo",
+      "media_url": "/api/download/files/e7c2b1a0.jpg",
+      "thumbnail_url": null,
+      "caption": "Best meal of my life.",
+      "rating": "GOOD",
+      "created_at": "2024-03-10T18:22:00Z"
+    }
+  ],
+  "next_before": "2024-03-10T18:22:00Z"
+}
+```
+
+Pass `?before=<next_before>` in the next request to get the following page. `next_before` is `null` when there are no more results.
+
+---
+
+### `GET /restaurant/:restaurant_id`
+
+List all posts tagged to a restaurant, newest first. Reads from the `restaurant_posts` Cassandra table.
+
+`:restaurant_id` is the Michelin `objectID` — the same `VARCHAR(50)` primary key used in PostgreSQL `restaurants.id`.
+
+**Example:** `GET /api/posts/restaurant/134469?limit=10`
+
+**Query parameters:** same as `/user/:user_id`.
+
+**Response `200`:**
+```json
+{
+  "data": [
+    {
+      "post_id": "e7c2b1a0-...",
+      "user_id": "a1b2c3d4-...",
+      "username": "alice",
+      "restaurant_id": "134469",
+      "restaurant_name": "Le Gabriel - La Réserve Paris",
+      "media_id": null,
+      "media_type": "video",
+      "media_url": "/api/download/files/e7c2b1a0.mp4",
+      "thumbnail_url": "/api/download/files/e7c2b1a0_thumb.jpg",
+      "caption": "Amazing tasting menu.",
+      "rating": "GOOD",
+      "created_at": "2024-03-09T12:10:00Z"
+    }
+  ],
+  "next_before": "2024-03-09T12:10:00Z"
+}
+```
+
+---
+
+## Cassandra Tables
+
+PostService writes to all three tables on every create/delete for O(1) reads:
+
+| Table | Partition key | Use case |
+|-------|--------------|----------|
+| `posts` | `post_id` | Direct lookup by ID |
+| `user_posts` | `user_id` | Profile page timeline |
+| `restaurant_posts` | `restaurant_id` | Restaurant page feed |
+
+All tables carry `rating` so the frontend never needs a second query to restaurant_stats.
+
+---
+
+## MQTT Events Published
+
+| Topic          | Payload |
+|----------------|---------|
+| `post.created` | `{ "post_id", "restaurant_id", "rating", "user_id" }` |
+| `post.deleted` | `{ "post_id", "restaurant_id", "rating" }` |
+
+---
+
+## Configuration
+
+```env
+DATABASE_URL=postgresql://admin:changeme@localhost:5432/hackmichelin
+CASSANDRA_NODES=localhost:9042
+HTTP_ADDR=0.0.0.0:3004
+JWT_SECRET=changeme
+MQTT_HOST=localhost
+MQTT_PORT=1883
+MQTT_CLIENT_ID=post-service
+RUST_LOG=info
+```
+
+---
+
+## Local Development
+
+```bash
+cp .env.example .env
+cargo run
+```
+
+---
+
+## Project Structure
+
+```
+PostService/
+├── src/
+│   ├── main.rs     # Entry point
+│   ├── config.rs   # Env-var config
+│   ├── db_pg.rs    # PostgreSQL: get_media, get_restaurant_name
+│   ├── db_cql.rs   # Cassandra: insert/get/delete across 3 tables
+│   ├── models.rs   # Post, CreatePostRequest, ListParams
+│   ├── auth.rs     # JWT middleware
+│   ├── http.rs     # Axum router + handlers
+│   ├── mqtt.rs     # MQTT publisher
+│   └── error.rs    # AppError → HTTP response
+├── Cargo.toml
+└── .env.example
+```

@@ -1,0 +1,147 @@
+# UploadService
+
+Rust microservice for media uploads. Accepts photos and videos, writes them to `./media/`, auto-generates video thumbnails via ffmpeg, and stores file metadata in PostgreSQL. Returns a `media_id` UUID that PostService uses when creating a post.
+
+---
+
+## Architecture
+
+```
+Client
+  │
+  ▼
+Nginx ──HTTP──▶ UploadService :3007
+                      │
+              ┌───────┴──────┐
+              │              │
+         PostgreSQL      ./media/
+         (media table)   (file storage)
+```
+
+The `media` table is pure file metadata. The social layer (caption, restaurant tag, rating) lives in Cassandra `posts` — UploadService has no knowledge of restaurants.
+
+---
+
+## HTTP Endpoints
+
+### `POST /upload` 🔒
+
+Upload a photo or video. Max file size: 200 MB.
+
+**Content-Type:** `multipart/form-data`
+
+| Field       | Required | Description |
+|-------------|----------|-------------|
+| `file`      | yes      | The media file |
+| `thumbnail` | no       | Custom thumbnail image (video only). If omitted ffmpeg generates one. |
+
+**Response `200`:**
+```json
+{
+  "media_id": "<uuid>",
+  "url": "/api/download/files/<filename>",
+  "thumbnail_url": "/api/download/files/<thumb-filename>",
+  "media_type": "video"
+}
+```
+
+`thumbnail_url` is `null` for photos (the photo itself is its thumbnail).
+
+**Errors:**
+
+| Code | Reason |
+|------|--------|
+| 400  | Unsupported file type or missing `file` field |
+| 401  | Missing or invalid JWT |
+| 413  | File exceeds 200 MB |
+
+---
+
+### `GET /health`
+Liveness probe. Returns `200 ok`.
+
+---
+
+## Media Storage
+
+Files are stored at `/media/<uuid>.<ext>` inside the container, mounted from `./media/` at the project root. DownloadService has read-only access to the same volume.
+
+Thumbnails for videos are stored at `/media/<uuid>_thumb.jpg`.
+
+`storage_path` (absolute path) and `url` (download URL) are written to PostgreSQL at upload time.
+
+---
+
+## Supported Formats
+
+| Type   | Extensions |
+|--------|-----------|
+| Photo  | jpg, jpeg, png, gif, webp, bmp |
+| Video  | mp4, mov, avi, mkv, webm |
+
+---
+
+## PostgreSQL Table: `media`
+
+| Column        | Type         | Notes |
+|---------------|--------------|-------|
+| `id`          | UUID PK      | auto `gen_random_uuid()` |
+| `user_id`     | UUID FK      | owner |
+| `media_type`  | VARCHAR(10)  | `photo` or `video` |
+| `filename`    | VARCHAR(255) | stored filename |
+| `storage_path`| TEXT         | absolute path on disk |
+| `url`         | TEXT         | `/api/download/files/{filename}` |
+| `thumbnail_url`| TEXT        | null for photos |
+| `mime_type`   | VARCHAR(100) | |
+| `size_bytes`  | BIGINT       | |
+| `width`/`height` | INT       | |
+| `duration_sec`| FLOAT        | null for photos |
+| `created_at`  | TIMESTAMPTZ  | |
+
+---
+
+## Configuration
+
+```env
+DATABASE_URL=postgresql://admin:changeme@localhost:5432/hackmichelin
+HTTP_ADDR=0.0.0.0:3007
+JWT_SECRET=changeme
+MEDIA_DIR=/media
+MAX_UPLOAD_BYTES=209715200
+RUST_LOG=info
+```
+
+---
+
+## Local Development
+
+```bash
+cp .env.example .env
+# Ensure ffmpeg is installed for video thumbnail generation
+cargo run
+```
+
+```bash
+# Upload a photo
+curl -X POST http://localhost:3007/ \
+  -H "Authorization: Bearer <jwt>" \
+  -F "file=@photo.jpg"
+```
+
+---
+
+## Project Structure
+
+```
+UploadService/
+├── src/
+│   ├── main.rs     # Entry point
+│   ├── config.rs   # Env-var config
+│   ├── db.rs       # PostgreSQL: insert_media
+│   ├── models.rs   # UploadResponse
+│   ├── auth.rs     # JWT middleware
+│   ├── http.rs     # Axum router + multipart handler
+│   └── error.rs    # AppError → HTTP response
+├── Cargo.toml
+└── .env.example
+```
