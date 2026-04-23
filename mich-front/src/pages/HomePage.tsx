@@ -81,9 +81,7 @@ export default function HomePage() {
   );
 
   return (
-    // pt-14: below the fixed TopBar (h-14 = 56px)
-    // pb-14: above the fixed BottomNav (~56px)
-    <div className="fixed inset-0 pt-14 pb-14">
+    <div className="fixed inset-0 pb-14">
       <ResizableSplit
         top={mapPanel}
         bottom={contentPanel}

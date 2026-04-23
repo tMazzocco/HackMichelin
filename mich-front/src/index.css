@@ -30,6 +30,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Prevent Mantine from forcing white body — use our custom background */
+[data-mantine-color-scheme] {
+  --mantine-color-body: var(--background);
+}
+
 /* ── Leaflet ────────────────────────────────────────────── */
 .leaflet-container {
   height: 100%;

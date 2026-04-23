@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { ActionIcon, Badge, Text, Group, Anchor, SimpleGrid, Paper, Loader, Stack, Title } from "@mantine/core";
 import { ArrowLeft, Globe, Phone, MapPin, Star } from "lucide-react";
 import { getRestaurantById } from "../services/restaurants";
 import { getRestaurantPosts } from "../services/posts";
 import { Restaurant, Post, awardStars, awardLabel } from "../types";
-import LoadingSpinner from "../components/common/LoadingSpinner";
 import MapView from "../components/map/MapView";
 import MapErrorBoundary from "../components/map/MapErrorBoundary";
 
@@ -22,7 +22,6 @@ export default function RestaurantDetailPage() {
     getRestaurantById(id)
       .then((r) => {
         setRestaurant(r);
-        // Posts are supplementary — failure must not block the page
         return getRestaurantPosts(id, 12).then((p) => setPosts(p.data)).catch(() => {});
       })
       .catch(() => setError(true))
@@ -32,30 +31,26 @@ export default function RestaurantDetailPage() {
   if (loading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
-        <LoadingSpinner size={32} />
+        <Loader color="michelin" size={32} />
       </div>
     );
   }
 
   if (error || !restaurant) {
     return (
-      <div className="page pt-14 pb-20 flex flex-col items-center justify-center gap-3 text-text/40 px-6 text-center">
-        <p className="text-base font-semibold">Restaurant not found</p>
-        <p className="text-sm">This restaurant may have been removed or is temporarily unavailable.</p>
-        <button
-          onClick={() => navigate(-1)}
-          className="mt-2 text-primary text-sm font-medium"
-        >
+      <div className="page pt-14 pb-20 flex flex-col items-center justify-center gap-3 px-6 text-center">
+        <Text size="md" fw={600} c="dimmed">Restaurant not found</Text>
+        <Text size="sm" c="dimmed">This restaurant may have been removed or is temporarily unavailable.</Text>
+        <Anchor component="button" c="michelin" size="sm" fw={500} mt="xs" onClick={() => navigate(-1)}>
           Go back
-        </button>
+        </Anchor>
       </div>
     );
   }
 
   const stars = awardStars(restaurant.michelin_award);
   const label = awardLabel(restaurant.michelin_award);
-  const heroImg =
-    restaurant.main_image_url ?? `https://picsum.photos/seed/${restaurant.id}/800/500`;
+  const heroImg = restaurant.main_image_url ?? `https://picsum.photos/seed/${restaurant.id}/800/500`;
 
   return (
     <div className="page pb-24">
@@ -63,84 +58,94 @@ export default function RestaurantDetailPage() {
       <div className="relative h-64">
         <img src={heroImg} alt={restaurant.name} className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-        <button
+        <ActionIcon
           onClick={() => navigate(-1)}
-          className="absolute top-12 left-4 w-9 h-9 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white"
+          variant="filled"
+          color="dark"
+          radius="xl"
+          size="lg"
+          style={{ position: "absolute", top: 48, left: 16, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(8px)" }}
         >
           <ArrowLeft size={18} />
-        </button>
+        </ActionIcon>
         {stars && (
-          <div className="absolute top-12 right-4 bg-primary text-white text-sm font-bold px-3 py-1 rounded-full">
+          <Badge
+            color="michelin"
+            size="lg"
+            style={{ position: "absolute", top: 48, right: 16 }}
+          >
             {stars}
-          </div>
+          </Badge>
         )}
         <div className="absolute bottom-4 left-4 right-4">
-          <h1 className="text-white font-bold text-2xl leading-tight">{restaurant.name}</h1>
-          {label && <p className="text-secondary text-sm mt-0.5">{label}</p>}
+          <Title order={2} c="white" style={{ lineHeight: 1.2 }}>{restaurant.name}</Title>
+          {label && <Text size="sm" c="pink" mt={2}>{label}</Text>}
         </div>
       </div>
 
       {/* Meta */}
-      <div className="px-4 mt-4 flex flex-col gap-2">
+      <Stack gap="xs" px="md" mt="md">
         {restaurant.city && (
-          <div className="flex items-center gap-2 text-text/60 text-sm">
-            <MapPin size={14} className="text-primary" />
-            <span>
-              {[restaurant.street, restaurant.city, restaurant.country_name]
-                .filter(Boolean)
-                .join(", ")}
-            </span>
-          </div>
+          <Group gap="xs">
+            <MapPin size={14} color="var(--mantine-color-michelin-6)" />
+            <Text size="sm" c="dimmed">
+              {[restaurant.street, restaurant.city, restaurant.country_name].filter(Boolean).join(", ")}
+            </Text>
+          </Group>
         )}
         {restaurant.phone && (
-          <div className="flex items-center gap-2 text-text/60 text-sm">
-            <Phone size={14} className="text-primary" />
-            <a href={`tel:${restaurant.phone}`}>{restaurant.phone}</a>
-          </div>
+          <Group gap="xs">
+            <Phone size={14} color="var(--mantine-color-michelin-6)" />
+            <Anchor href={`tel:${restaurant.phone}`} size="sm" c="dimmed">
+              {restaurant.phone}
+            </Anchor>
+          </Group>
         )}
         {restaurant.website && (
-          <div className="flex items-center gap-2 text-text/60 text-sm">
-            <Globe size={14} className="text-primary" />
-            <a href={restaurant.website} target="_blank" rel="noreferrer" className="truncate text-primary">
+          <Group gap="xs">
+            <Globe size={14} color="var(--mantine-color-michelin-6)" />
+            <Anchor href={restaurant.website} target="_blank" rel="noreferrer" size="sm" c="michelin" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {restaurant.website.replace(/^https?:\/\//, "")}
-            </a>
-          </div>
+            </Anchor>
+          </Group>
         )}
         {restaurant.price_category_label && (
-          <div className="flex items-center gap-2 text-text/60 text-sm">
-            <Star size={14} className="text-primary" />
-            <span>{restaurant.price_category_label}</span>
-          </div>
+          <Group gap="xs">
+            <Star size={14} color="var(--mantine-color-michelin-6)" />
+            <Text size="sm" c="dimmed">{restaurant.price_category_label}</Text>
+          </Group>
         )}
-      </div>
+      </Stack>
 
       {/* Description */}
       {restaurant.main_desc && (
-        <p className="px-4 mt-4 text-text/70 text-sm leading-relaxed">{restaurant.main_desc}</p>
+        <Text size="sm" c="dimmed" px="md" mt="md" style={{ lineHeight: 1.7 }}>
+          {restaurant.main_desc}
+        </Text>
       )}
 
       {/* Stats */}
       {(restaurant.total_posts != null || restaurant.good_pct != null) && (
-        <div className="mx-4 mt-4 grid grid-cols-2 gap-3">
+        <SimpleGrid cols={2} px="md" mt="md" spacing="sm">
           {restaurant.total_posts != null && (
-            <div className="rounded-xl bg-black/5 p-3 text-center">
-              <p className="font-bold text-lg">{restaurant.total_posts}</p>
-              <p className="text-xs text-text/40">Posts</p>
-            </div>
+            <Paper withBorder radius="xl" p="sm" ta="center">
+              <Text fw={700} size="xl">{restaurant.total_posts}</Text>
+              <Text size="xs" c="dimmed">Posts</Text>
+            </Paper>
           )}
           {restaurant.good_pct != null && (
-            <div className="rounded-xl bg-black/5 p-3 text-center">
-              <p className="font-bold text-lg">{Math.round(restaurant.good_pct * 100)}%</p>
-              <p className="text-xs text-text/40">Positive</p>
-            </div>
+            <Paper withBorder radius="xl" p="sm" ta="center">
+              <Text fw={700} size="xl">{Math.round(restaurant.good_pct * 100)}%</Text>
+              <Text size="xs" c="dimmed">Positive</Text>
+            </Paper>
           )}
-        </div>
+        </SimpleGrid>
       )}
 
       {/* Map */}
       {restaurant.latitude && restaurant.longitude && (
         <div className="px-4 mt-5">
-          <h2 className="font-semibold text-sm mb-2">Location</h2>
+          <Text fw={600} size="sm" mb="xs">Location</Text>
           <div className="rounded-2xl overflow-hidden h-40 shadow-md">
             <MapErrorBoundary height="160px">
               <MapView
@@ -157,7 +162,7 @@ export default function RestaurantDetailPage() {
       {/* Posts grid */}
       {posts.length > 0 && (
         <div className="px-4 mt-5">
-          <h2 className="font-semibold text-sm mb-3">Moments</h2>
+          <Text fw={600} size="sm" mb="xs">Moments</Text>
           <div className="grid grid-cols-3 gap-1">
             {posts.map((post) => {
               const thumb = post.thumbnail_url ?? post.media_url;
@@ -166,8 +171,8 @@ export default function RestaurantDetailPage() {
                   {thumb ? (
                     <img src={thumb} alt="" className="w-full h-full object-cover" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-text/20 text-xs">
-                      No media
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Text size="xs" c="dimmed">No media</Text>
                     </div>
                   )}
                   {post.rating && (

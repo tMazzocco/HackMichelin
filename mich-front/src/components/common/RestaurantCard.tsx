@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Card, Badge, Text, Group } from "@mantine/core";
 import { MapPin } from "lucide-react";
 import { Restaurant, awardStars, formatDistance } from "../../types";
 
@@ -11,32 +12,45 @@ export default function RestaurantCard({ restaurant }: Props) {
   const img = restaurant.main_image_url ?? `https://picsum.photos/seed/${restaurant.id}/400/300`;
 
   return (
-    <Link
+    <Card
+      component={Link}
       to={`/restaurant/${restaurant.id}`}
-      className="flex-shrink-0 w-56 rounded-2xl overflow-hidden bg-background shadow-lg border border-black/5"
+      withBorder
+      padding={0}
+      radius="xl"
+      style={{ flexShrink: 0, width: 224, textDecoration: "none" }}
     >
-      <div className="relative h-36">
-        <img src={img} alt={restaurant.name} className="w-full h-full object-cover" />
+      <Card.Section style={{ position: "relative", height: 144 }}>
+        <img src={img} alt={restaurant.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         {stars && (
-          <span className="absolute top-2 right-2 bg-primary text-white text-xs font-bold px-2 py-0.5 rounded-full">
+          <Badge
+            color="michelin"
+            style={{ position: "absolute", top: 8, right: 8 }}
+            size="sm"
+          >
             {stars}
-          </span>
+          </Badge>
         )}
-      </div>
-      <div className="p-3">
-        <p className="text-text font-semibold text-sm leading-tight line-clamp-1">
+      </Card.Section>
+
+      <div style={{ padding: "10px 12px" }}>
+        <Text fw={600} size="sm" lineClamp={1}>
           {restaurant.name}
-        </p>
+        </Text>
         {restaurant.city && (
-          <p className="text-text/50 text-xs mt-0.5 flex items-center gap-1">
-            <MapPin size={10} />
-            {restaurant.city}
-          </p>
+          <Group gap={4} mt={2}>
+            <MapPin size={10} color="var(--mantine-color-dimmed)" />
+            <Text size="xs" c="dimmed" lineClamp={1}>
+              {restaurant.city}
+            </Text>
+          </Group>
         )}
         {restaurant.distance_meters != null && (
-          <p className="text-secondary text-xs mt-1">{formatDistance(restaurant.distance_meters)}</p>
+          <Text size="xs" c="michelin" mt={4}>
+            {formatDistance(restaurant.distance_meters)}
+          </Text>
         )}
       </div>
-    </Link>
+    </Card>
   );
 }

@@ -10,15 +10,15 @@ import ArticleDetailPage from "./pages/ArticleDetailPage";
 import RestaurantDetailPage from "./pages/RestaurantDetailPage";
 import ProfilePage from "./pages/ProfilePage";
 
-const FULL_SCREEN_ROUTES = ["/shorts", "/map"];
+const HIDE_TOPBAR_ROUTES = ["/shorts", "/map", "/restaurant"];
 
 function Layout() {
   const { pathname } = useLocation();
-  const isFullScreen = FULL_SCREEN_ROUTES.some((r) => pathname.startsWith(r));
+  const hideTopBar = HIDE_TOPBAR_ROUTES.some((r) => pathname.startsWith(r));
 
   return (
     <>
-      {!isFullScreen && <TopBar />}
+      {!hideTopBar && <TopBar />}
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/map" element={<MapPage />} />

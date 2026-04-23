@@ -6,7 +6,7 @@ use crate::{error::AppError, models::FeedItem};
 
 pub async fn get_followers(session: &Arc<scylla::Session>, author_id: Uuid) -> Result<Vec<Uuid>, AppError> {
     let result = session.query(
-        "SELECT follower_id FROM user_followers WHERE followed_id = ?",
+        "SELECT follower_id FROM hackmichelin.user_followers WHERE followed_id = ?",
         (author_id,),
     ).await.map_err(|e| AppError::Cassandra(e.to_string()))?;
     let mut ids = vec![];
@@ -34,7 +34,7 @@ pub async fn fan_out(
     rating: Option<String>,
 ) {
     if let Err(e) = session.query(
-        "INSERT INTO user_feed (viewer_id, created_at, post_id, author_id, author_name, restaurant_id, restaurant_name, media_type, media_url, thumbnail_url, caption, rating) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) USING TTL 2592000",
+        "INSERT INTO hackmichelin.user_feed (viewer_id, created_at, post_id, author_id, author_name, restaurant_id, restaurant_name, media_type, media_url, thumbnail_url, caption, rating) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) USING TTL 2592000",
         (viewer_id, created_at, post_id, author_id, &author_name, restaurant_id.as_deref(), restaurant_name.as_deref(), media_type.as_deref(), media_url.as_deref(), thumbnail_url.as_deref(), caption.as_deref(), rating.as_deref()),
     ).await {
         tracing::error!("fan_out to {viewer_id}: {e}");
@@ -48,7 +48,7 @@ pub async fn get_feed(
     limit: i32,
 ) -> Result<Vec<FeedItem>, AppError> {
     let result = session.query(
-        "SELECT post_id, created_at, author_id, author_name, restaurant_id, restaurant_name, media_type, media_url, thumbnail_url, caption, rating FROM user_feed WHERE viewer_id = ? AND created_at < ? LIMIT ?",
+        "SELECT post_id, created_at, author_id, author_name, restaurant_id, restaurant_name, media_type, media_url, thumbnail_url, caption, rating FROM hackmichelin.user_feed WHERE viewer_id = ? AND created_at < ? LIMIT ?",
         (viewer_id, before, limit),
     ).await.map_err(|e| AppError::Cassandra(e.to_string()))?;
     let mut items = vec![];

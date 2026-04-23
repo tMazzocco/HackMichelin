@@ -1,263 +1,136 @@
 # HackMichelin
 
-Google Maps meets Instagram for the Michelin Guide.
-Explore restaurants on a map, collect stars by visiting them, post photo/video reviews, follow food influencers.
-
----
+Michelin-style restaurant review app. Rust/Axum microservices + React 19 frontend.
 
 ## Architecture
 
-```
-Browser / Mobile App
-        │
-        ▼
-    Nginx :80            ← reverse proxy / API gateway (cloudflared tunnel in prod)
-        │
-        ├── /api/maps/      → MapsDataService  :3000  (Rust / Axum)
-        ├── /api/download/  → DownloadService  :3001  (Rust / Axum)
-        ├── /api/auth/      → LoginService     :3002  (Rust / Axum)
-        ├── /api/users/     → UserService      :3003  (Rust / Axum)
-        ├── /api/posts/     → PostService      :3004  (Rust / Axum)
-        ├── /api/feed/      → FeedService      :3005  (Rust / Axum)
-        ├── /api/search/    → SearchService    :3006  (Rust / Axum)
-        ├── /api/upload/    → UploadService    :3007  (Rust / Axum)
-        ├── /api/comments/  → CommentService   :3008  (Rust / Axum)
-        ├── /api/likes/     → LikeService      :3009  (Rust / Axum)
-        └── /api/stats/     → StatsService     :3010  (Rust / Axum)
-```
+| Service | Port | Description |
+|---|---|---|
+| MapsDataService | 3000 | Restaurant geo queries |
+| DownloadService | 3001 | File streaming (HLS + static) |
+| LoginService | 3002 | Auth (register/login/JWT) |
+| UserService | 3003 | Profiles, follows, stars |
+| PostService | 3004 | Posts (Cassandra time-series) |
+| FeedService | 3005 | Personal feed |
+| SearchService | 3006 | Restaurant/user search |
+| UploadService | 3007 | Media upload |
+| CommentService | 3008 | Comments |
+| LikeService | 3009 | Likes |
+| StatsService | 3010 | Restaurant stats |
 
-### MQTT Event Bus (Mosquitto :1883)
+**Databases:** PostgreSQL (restaurants, users, media) · ScyllaDB/Cassandra (posts, feed, comments, likes)
 
-| Publisher    | Topic            | Subscribers                |
-|--------------|------------------|----------------------------|
-| LoginService | user.registered  | SearchService              |
-| UserService  | user.updated     | SearchService              |
-| PostService  | post.created     | FeedService, StatsService  |
-| PostService  | post.deleted     | StatsService               |
-
-### Database Ownership
-
-| Store         | Port  | Owned by                                                      |
-|---------------|-------|---------------------------------------------------------------|
-| PostgreSQL    | 5432  | LoginService, UserService, UploadService, StatsService, MapsDataService (read) |
-| Cassandra     | 9042  | PostService, FeedService, CommentService, LikeService, UserService (follows) |
-| Elasticsearch | 9200  | SearchService (read/write via MQTT), Importer (seed)          |
-
-### PostgreSQL Schema (normalized)
-
-Restaurant data is stored across normalized lookup tables:
-
-```
-countries ──< cities ──< restaurants >── michelin_awards
-                              │
-                    ┌─────────┴──────────┐
-                 serving              costing
-                    │                    │
-              type_cuisines      price_categories
-```
-
-`restaurants.id` remains the Michelin `objectID` (`VARCHAR(50)`) — used as the cross-store key into Cassandra.
+**Frontend:** `mich-front/` — React 19 + TypeScript + Vite + Tailwind. Dev proxy strips `/api/<prefix>` and forwards to the relevant service port.
 
 ---
 
-## Services
+## API Reference
 
-### MapsDataService — `:3000`
-Geographic restaurant queries. Returns nearby restaurants with Haversine distance and live experience stats (good_pct from StatsService).
+Auth: JWT HS256. Read endpoints are public. Write endpoints require `Authorization: Bearer <token>`.
 
-```
-GET /api/maps/health
-GET /api/maps/restaurants/nearby?lat=&lng=&radius=&limit=
-GET /api/maps/restaurants/:id
-```
+### LoginService `:3002`
 
-### DownloadService — `:3001`
-Serves media files from `./media/` as HLS v3 VOD playlists with full Range-request support for video seeking.
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/register` | — | Create account |
+| POST | `/login` | — | Get access + refresh tokens |
+| POST | `/refresh` | — | Rotate refresh token |
+| POST | `/logout` | — | Invalidate refresh token |
 
-```
-GET /api/download/health
-GET /api/download/playlist.m3u8[?files=a.mp4,b.jpg]
-GET /api/download/files/:name
-```
+### UserService `:3003`
 
-### LoginService — `:3002`
-JWT authentication. Issues 15-min access tokens + 30-day refresh tokens. Publishes `user.registered` on signup.
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/users/:id` | — | Get profile |
+| GET | `/users/:id/followers` | — | List followers |
+| GET | `/users/:id/following` | — | List following |
+| GET | `/users/:id/stars` | — | List starred restaurants |
+| PATCH | `/me` | ✓ | Update own profile |
+| POST | `/users/:id/follow` | ✓ | Follow user |
+| DELETE | `/users/:id/follow` | ✓ | Unfollow user |
+| POST | `/me/stars/:restaurant_id` | ✓ | Star restaurant |
+| DELETE | `/me/stars/:restaurant_id` | ✓ | Unstar restaurant |
 
-```
-POST /api/auth/register    { username, email, password }
-POST /api/auth/login       { email, password }
-POST /api/auth/refresh     { refresh_token }
-POST /api/auth/logout      { refresh_token }
-```
+### PostService `:3004`
 
-### UserService — `:3003`
-Profile management, social graph (follow/unfollow), and star collection (honor-system check-in to any Michelin guide entry).
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/random` | — | 3 random posts |
+| GET | `/:id` | — | Get post |
+| GET | `/user/:user_id` | — | User's posts (cursor: `?before=&limit=`) |
+| GET | `/restaurant/:restaurant_id` | — | Restaurant's posts (cursor: `?before=&limit=`) |
+| POST | `/` | ✓ | Create post |
+| DELETE | `/:id` | ✓ | Delete own post |
 
-```
-GET    /api/users/:id
-PATCH  /api/users/me                          🔒
-POST   /api/users/:id/follow                  🔒
-DELETE /api/users/:id/follow                  🔒
-GET    /api/users/:id/followers
-GET    /api/users/:id/following
-POST   /api/users/me/stars/:restaurant_id     🔒
-DELETE /api/users/me/stars/:restaurant_id     🔒
-GET    /api/users/:id/stars
-```
+Post ratings: `"GOOD"` or `"BAD"`. Pagination response: `{ data: Post[], next_before: string|null }`. Exhausted when `data.length < limit`.
 
-### PostService — `:3004`
-Create and retrieve photo/video posts tagged to restaurants. Publishes MQTT events consumed by FeedService and StatsService.
+### FeedService `:3005`
 
-```
-POST   /api/posts                             🔒  { media_id, restaurant_id?, caption, rating }
-GET    /api/posts/:id
-DELETE /api/posts/:id                         🔒
-GET    /api/posts/user/:user_id[?before=&limit=]
-GET    /api/posts/restaurant/:restaurant_id[?before=&limit=]
-```
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/` | ✓ | Personal feed (cursor: `?before=&limit=`) |
 
-`rating` is `"GOOD"` or `"BAD"` (binary Steam-style review).
+### MapsDataService `:3000`
 
-### FeedService — `:3005`
-Personal home feed (fan-out on write via MQTT). Subscribes to `post.created` and writes one row per follower into Cassandra `user_feed`.
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/restaurants/nearby` | — | `?lat=&lng=&radius=&limit=` |
+| GET | `/restaurants/:id` | — | Restaurant detail |
 
-```
-GET /api/feed[?before=&limit=]    🔒
-```
+Restaurant fields use `latitude`/`longitude` (not `lat`/`lng`).
 
-### SearchService — `:3006`
-Full-text and faceted search backed by Elasticsearch. Subscribes to `user.registered` and `user.updated` to keep the users index current.
+### SearchService `:3006`
 
-```
-GET /api/search/restaurants?q=&city=&country=&cuisine=&award=&lat=&lng=&radius=
-GET /api/search/users?q=
-```
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/search/restaurants` | — | `?q=` |
+| GET | `/api/search/users` | — | `?q=` |
 
-### UploadService — `:3007`
-Accepts multipart file uploads (max 200 MB). Writes to `./media/`, auto-generates video thumbnails via ffmpeg if none provided, stores metadata in PostgreSQL.
+### CommentService `:3008`
 
-```
-POST /api/upload    🔒   multipart/form-data  fields: file, thumbnail? (optional)
-                         → { media_id, url, thumbnail_url, media_type }
-```
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/comments/post/:post_id` | — | List comments |
+| POST | `/api/comments/post/:post_id` | ✓ | Create comment |
+| DELETE | `/api/comments/:post_id/:comment_id` | ✓ | Delete own comment |
 
-### CommentService — `:3008`
-Thread-order comments on posts, backed by Cassandra.
+### LikeService `:3009`
 
-```
-POST   /api/comments/post/:post_id            🔒  { body }
-GET    /api/comments/post/:post_id[?after=&limit=]
-DELETE /api/comments/:post_id/:comment_id     🔒
-```
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/likes/post/:post_id` | — | List likes |
+| GET | `/api/likes/post/:post_id/count` | — | Like count |
+| POST | `/api/likes/post/:post_id` | ✓ | Like post |
+| DELETE | `/api/likes/post/:post_id` | ✓ | Unlike post |
 
-### LikeService — `:3009`
-Like/unlike posts with atomic Cassandra counters.
+### UploadService `:3007`
 
-```
-POST   /api/likes/post/:post_id     🔒
-DELETE /api/likes/post/:post_id     🔒
-GET    /api/likes/post/:post_id/count
-GET    /api/likes/post/:post_id[?limit=]
-```
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/` | ✓ | Upload media, returns `media_id` |
 
-### StatsService — `:3010`
-Aggregated good/bad experience per restaurant. Subscribes to MQTT `post.created`/`post.deleted` and upserts `restaurant_stats` in PostgreSQL. MapsDataService JOINs this table.
+### DownloadService `:3001`
 
-```
-GET /api/stats/restaurants/:id    → { total_posts, good_posts, bad_posts, good_pct }
-```
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/playlist.m3u8` | — | HLS playlist |
+| GET | `/files/:name` | — | Static file download |
+
+### StatsService `:3010`
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/restaurants/:id` | — | Post counts / rating breakdown |
 
 ---
 
-## Infrastructure
-
-| Container     | Image                          | Port(s)    | Purpose                               |
-|---------------|--------------------------------|------------|---------------------------------------|
-| nginx         | nginx:alpine                   | 80, 443    | Reverse proxy / API gateway           |
-| postgres      | postgres:16-alpine             | 5432       | Users, restaurants, media, stats      |
-| elasticsearch | elasticsearch:8.13.0           | 9200, 9300 | Full-text restaurant + user search    |
-| kibana        | kibana:8.13.0                  | 5601       | Elasticsearch UI                      |
-| cassandra     | cassandra:5                    | 9042       | Posts, feed, likes, comments, follows |
-| mosquitto     | eclipse-mosquitto:2            | 1883, 9001 | MQTT event bus                        |
-| importer      | custom                         | —          | Seeds PG + ES from JSONL on boot      |
-
----
-
-## Quick Start
-
-### Prerequisites
-- Docker Desktop
-- Rust 1.78+ (local service dev)
-- ffmpeg (UploadService thumbnail generation, or use Docker)
-
-### Start infrastructure
+## Dev Setup
 
 ```bash
-docker compose up -d postgres cassandra elasticsearch mosquitto kibana
-# Wait ~60 s for Cassandra to initialise, then:
-docker compose up -d cassandra-init importer nginx
+# Frontend
+cd mich-front
+bun install
+bun dev
 ```
 
-### Run all services locally (recommended)
-
-```bash
-# Start all 11 services in parallel — logs go to ./logs/<Service>.log
-./start.sh
-
-# Stop them all
-./stop.sh
-```
-
-Pass `--release` for optimised binaries (slower first compile, faster runtime):
-
-```bash
-./start.sh --release
-```
-
-### Run a single service manually
-
-```bash
-cp .env.exemple .env          # fill in variables once
-cd MapsDataService && cargo run
-```
-
-Each service reads env vars from its directory's `.env` or the shell environment. See `.env.exemple` for all variables.
-
-### Run a service with Docker (once Dockerfile exists)
-
-```bash
-docker compose up -d login_service
-```
-
----
-
-## Data Seeding
-
-The `importer` container runs automatically and loads `ressources/all_restaurants.jsonl` into PostgreSQL and Elasticsearch. It also creates the `users` Elasticsearch index. Run once; skips if data already present.
-
----
-
-## Media Files
-
-Drop files into `./media/` at the project root. They are available immediately via DownloadService without rebuilding.
-
-**Supported:** `jpg jpeg png gif webp bmp mp4 ts m4s mov avi mkv webm`
-
-UploadService writes to `./media/` automatically. DownloadService has read-only access.
-
----
-
-## Authentication
-
-All `🔒` endpoints require `Authorization: Bearer <jwt>` header.
-
-JWTs are issued by LoginService, validated **independently** in each service using the shared `JWT_SECRET`. There is no round-trip to LoginService on every request.
-
-Token lifetimes: access token 15 min, refresh token 30 days.
-
----
-
-## Pagination
-
-- **Cassandra-backed endpoints** (feed, posts, comments, likes): cursor-based via `?before=<ISO8601>` (posts) or `?after=<ISO8601>` (comments). Default limit 20, max 100.
-- **PostgreSQL-backed endpoints** (star collections, search): offset-based via `?page=&limit=`.
+Each service reads env vars from `.env`. Key vars: `DATABASE_URL`, `CASSANDRA_NODES`, `HTTP_ADDR`, `JWT_SECRET`.

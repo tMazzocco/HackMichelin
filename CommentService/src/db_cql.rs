@@ -19,7 +19,7 @@ pub async fn insert_comment(
 ) -> Result<(), AppError> {
     session
         .query(
-            "INSERT INTO post_comments \
+            "INSERT INTO hackmichelin.post_comments \
              (post_id, comment_id, created_at, user_id, username, body) \
              VALUES (?, ?, ?, ?, ?, ?)",
             (post_id, comment_id, now, user_id, username, body),
@@ -45,7 +45,7 @@ pub async fn get_comments(
         session
             .query(
                 "SELECT comment_id, post_id, user_id, username, body, created_at \
-                 FROM post_comments \
+                 FROM hackmichelin.post_comments \
                  WHERE post_id = ? AND created_at > ? \
                  ORDER BY created_at ASC, comment_id ASC \
                  LIMIT ?",
@@ -58,7 +58,7 @@ pub async fn get_comments(
         session
             .query(
                 "SELECT comment_id, post_id, user_id, username, body, created_at \
-                 FROM post_comments \
+                 FROM hackmichelin.post_comments \
                  WHERE post_id = ? \
                  ORDER BY created_at ASC, comment_id ASC \
                  LIMIT ?",
@@ -103,7 +103,7 @@ pub async fn get_comment(
     let result = session
         .query(
             "SELECT comment_id, post_id, user_id, username, body, created_at \
-             FROM post_comments \
+             FROM hackmichelin.post_comments \
              WHERE post_id = ? AND created_at = ? AND comment_id = ?",
             (post_id, created_at, comment_id),
         )
@@ -135,7 +135,7 @@ pub async fn delete_comment(
 ) -> Result<(), AppError> {
     session
         .query(
-            "DELETE FROM post_comments \
+            "DELETE FROM hackmichelin.post_comments \
              WHERE post_id = ? AND created_at = ? AND comment_id = ?",
             (post_id, created_at, comment_id),
         )

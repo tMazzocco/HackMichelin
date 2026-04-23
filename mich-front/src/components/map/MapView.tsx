@@ -134,6 +134,7 @@ export default function MapView({ location, restaurants, zoom = 13, interactive 
       center={[location.lat, location.lng]}
       zoom={zoom}
       zoomControl={false}
+      attributionControl={false}
       dragging={interactive}
       scrollWheelZoom={interactive}
       doubleClickZoom={interactive}

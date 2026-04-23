@@ -40,7 +40,6 @@ async fn main() -> anyhow::Result<()> {
         .build()
         .await?;
 
-    session.use_keyspace("hackmichelin", false).await?;
 
     let session = Arc::new(session);
 

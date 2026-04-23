@@ -123,6 +123,13 @@ async fn list_user_posts(
     Ok(Json(json!({ "data": posts, "next_before": next_before })))
 }
 
+async fn get_random_posts(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let posts = db_cql::get_random_posts(&state.cassandra, 3).await?;
+    Ok(Json(json!({ "data": posts })))
+}
+
 async fn list_restaurant_posts(
     State(state): State<AppState>,
     Path(restaurant_id): Path<String>,
@@ -145,6 +152,7 @@ pub fn router(state: AppState) -> Router {
 
     let public = Router::new()
         .route("/health", get(health))
+        .route("/random", get(get_random_posts))
         .route("/:id", get(get_post))
         .route("/user/:user_id", get(list_user_posts))
         .route("/restaurant/:restaurant_id", get(list_restaurant_posts));

@@ -35,7 +35,6 @@ async fn main() -> anyhow::Result<()> {
             .build()
             .await?,
     );
-    cassandra.use_keyspace("hackmichelin", false).await?;
     info!("Cassandra connected.");
 
     let mqtt_pub = mqtt::MqttPublisher::new(&cfg);

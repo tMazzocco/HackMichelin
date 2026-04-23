@@ -19,7 +19,7 @@ pub async fn like_post(
     // Step 1: lightweight transaction — IF NOT EXISTS
     let result = session
         .query(
-            "INSERT INTO post_likes (post_id, user_id, username, liked_at) \
+            "INSERT INTO hackmichelin.post_likes (post_id, user_id, username, liked_at) \
              VALUES (?, ?, ?, ?) IF NOT EXISTS",
             (post_id, user_id, username, liked_at),
         )
@@ -41,7 +41,7 @@ pub async fn like_post(
     // Step 2: increment counter (separate statement — cannot mix with regular writes in a batch)
     session
         .query(
-            "UPDATE post_likes_count SET likes = likes + 1 WHERE post_id = ?",
+            "UPDATE hackmichelin.post_likes_count SET likes = likes + 1 WHERE post_id = ?",
             (post_id,),
         )
         .await
@@ -59,7 +59,7 @@ pub async fn unlike_post(
     // Step 1: verify the like exists
     let result = session
         .query(
-            "SELECT user_id FROM post_likes WHERE post_id = ? AND user_id = ?",
+            "SELECT user_id FROM hackmichelin.post_likes WHERE post_id = ? AND user_id = ?",
             (post_id, user_id),
         )
         .await
@@ -77,7 +77,7 @@ pub async fn unlike_post(
     // Step 2: delete the like row
     session
         .query(
-            "DELETE FROM post_likes WHERE post_id = ? AND user_id = ?",
+            "DELETE FROM hackmichelin.post_likes WHERE post_id = ? AND user_id = ?",
             (post_id, user_id),
         )
         .await
@@ -86,7 +86,7 @@ pub async fn unlike_post(
     // Step 3: decrement counter
     session
         .query(
-            "UPDATE post_likes_count SET likes = likes - 1 WHERE post_id = ?",
+            "UPDATE hackmichelin.post_likes_count SET likes = likes - 1 WHERE post_id = ?",
             (post_id,),
         )
         .await
@@ -102,7 +102,7 @@ pub async fn get_like_count(
 ) -> Result<LikeCount, AppError> {
     let result = session
         .query(
-            "SELECT likes FROM post_likes_count WHERE post_id = ?",
+            "SELECT likes FROM hackmichelin.post_likes_count WHERE post_id = ?",
             (post_id,),
         )
         .await
@@ -126,7 +126,7 @@ pub async fn list_likes(
 ) -> Result<Vec<LikeEntry>, AppError> {
     let result = session
         .query(
-            "SELECT user_id, username, liked_at FROM post_likes WHERE post_id = ? LIMIT ?",
+            "SELECT user_id, username, liked_at FROM hackmichelin.post_likes WHERE post_id = ? LIMIT ?",
             (post_id, limit),
         )
         .await

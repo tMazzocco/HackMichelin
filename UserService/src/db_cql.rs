@@ -10,11 +10,11 @@ pub async fn follow_user(
 ) -> Result<(), AppError> {
     let now = Utc::now();
     session.query(
-        "INSERT INTO user_following (follower_id, followed_id, followed_name, followed_at) VALUES (?, ?, ?, ?)",
+        "INSERT INTO hackmichelin.user_following (follower_id, followed_id, followed_name, followed_at) VALUES (?, ?, ?, ?)",
         (follower_id, followed_id, followed_name, now),
     ).await.map_err(|e| AppError::Cassandra(e.to_string()))?;
     session.query(
-        "INSERT INTO user_followers (followed_id, follower_id, follower_name, followed_at) VALUES (?, ?, ?, ?)",
+        "INSERT INTO hackmichelin.user_followers (followed_id, follower_id, follower_name, followed_at) VALUES (?, ?, ?, ?)",
         (followed_id, follower_id, follower_name, now),
     ).await.map_err(|e| AppError::Cassandra(e.to_string()))?;
     Ok(())
@@ -25,11 +25,11 @@ pub async fn unfollow_user(
     follower_id: Uuid, followed_id: Uuid,
 ) -> Result<(), AppError> {
     session.query(
-        "DELETE FROM user_following WHERE follower_id = ? AND followed_id = ?",
+        "DELETE FROM hackmichelin.user_following WHERE follower_id = ? AND followed_id = ?",
         (follower_id, followed_id),
     ).await.map_err(|e| AppError::Cassandra(e.to_string()))?;
     session.query(
-        "DELETE FROM user_followers WHERE followed_id = ? AND follower_id = ?",
+        "DELETE FROM hackmichelin.user_followers WHERE followed_id = ? AND follower_id = ?",
         (followed_id, follower_id),
     ).await.map_err(|e| AppError::Cassandra(e.to_string()))?;
     Ok(())
@@ -40,7 +40,7 @@ pub async fn is_following(
     follower_id: Uuid, followed_id: Uuid,
 ) -> Result<bool, AppError> {
     let result = session.query(
-        "SELECT followed_id FROM user_following WHERE follower_id = ? AND followed_id = ?",
+        "SELECT followed_id FROM hackmichelin.user_following WHERE follower_id = ? AND followed_id = ?",
         (follower_id, followed_id),
     ).await.map_err(|e| AppError::Cassandra(e.to_string()))?;
     Ok(result.rows.map(|r| !r.is_empty()).unwrap_or(false))
@@ -51,7 +51,7 @@ pub async fn list_following(
     user_id: Uuid,
 ) -> Result<Vec<(Uuid, String)>, AppError> {
     let result = session.query(
-        "SELECT followed_id, followed_name FROM user_following WHERE follower_id = ?",
+        "SELECT followed_id, followed_name FROM hackmichelin.user_following WHERE follower_id = ?",
         (user_id,),
     ).await.map_err(|e| AppError::Cassandra(e.to_string()))?;
     let mut out = vec![];
@@ -68,7 +68,7 @@ pub async fn list_followers(
     user_id: Uuid,
 ) -> Result<Vec<(Uuid, String)>, AppError> {
     let result = session.query(
-        "SELECT follower_id, follower_name FROM user_followers WHERE followed_id = ?",
+        "SELECT follower_id, follower_name FROM hackmichelin.user_followers WHERE followed_id = ?",
         (user_id,),
     ).await.map_err(|e| AppError::Cassandra(e.to_string()))?;
     let mut out = vec![];

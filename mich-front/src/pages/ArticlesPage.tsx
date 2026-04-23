@@ -1,34 +1,46 @@
-import { articles } from "../data/articles";
 import { Link } from "react-router-dom";
+import { Title, Card, Text, Group, Stack } from "@mantine/core";
+import { articles } from "../data/articles";
 
 export default function ArticlesPage() {
   return (
-    <div className="page pt-14 pb-20 px-4">
-      <h1 className="font-bold text-xl mt-4 mb-5">Articles</h1>
-      <div className="flex flex-col gap-4">
+    <div className="page pb-20 px-4" style={{ paddingTop: 56 }}>
+      <Title order={2} fw={700} mt="md" mb="lg">Articles</Title>
+      <Stack gap="md">
         {articles.map((a) => (
-          <Link
+          <Card
             key={a.id}
+            component={Link}
             to={`/articles/${a.id}`}
-            className="rounded-2xl overflow-hidden shadow-sm border border-black/5 bg-white flex flex-col"
+            withBorder
+            padding={0}
+            radius="xl"
+            style={{ textDecoration: "none" }}
           >
-            <div className="relative h-44">
-              <img src={a.image_url} alt={a.title} className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-              <p className="absolute bottom-3 left-4 right-4 text-white font-bold text-base leading-tight">
+            <Card.Section style={{ position: "relative", height: 176 }}>
+              <img src={a.image_url} alt={a.title} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.55), transparent)" }} />
+              <Text
+                fw={700}
+                size="md"
+                c="white"
+                lineClamp={2}
+                style={{ position: "absolute", bottom: 12, left: 16, right: 16 }}
+              >
                 {a.title}
-              </p>
+              </Text>
+            </Card.Section>
+
+            <div style={{ padding: "12px 16px" }}>
+              <Text size="sm" c="dimmed" lineClamp={2}>{a.description}</Text>
+              <Group justify="space-between" mt="xs">
+                <Text size="xs" c="dimmed" style={{ opacity: 0.6 }}>{a.author}</Text>
+                <Text size="xs" c="dimmed" style={{ opacity: 0.6 }}>{a.created_at}</Text>
+              </Group>
             </div>
-            <div className="p-4">
-              <p className="text-text/60 text-sm leading-relaxed">{a.description}</p>
-              <div className="flex items-center justify-between mt-3">
-                <span className="text-text/30 text-xs">{a.author}</span>
-                <span className="text-text/30 text-xs">{a.created_at}</span>
-              </div>
-            </div>
-          </Link>
+          </Card>
         ))}
-      </div>
+      </Stack>
     </div>
   );
 }

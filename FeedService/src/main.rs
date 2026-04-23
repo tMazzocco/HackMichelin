@@ -27,7 +27,6 @@ async fn main() -> anyhow::Result<()> {
             .build()
             .await?,
     );
-    cassandra.use_keyspace("hackmichelin", false).await?;
     info!("Cassandra connected.");
 
     // MQTT subscriber runs in background
