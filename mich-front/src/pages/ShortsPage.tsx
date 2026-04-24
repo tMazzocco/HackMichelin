@@ -117,9 +117,8 @@ export default function ShortsPage() {
 
     const key = `${location.lat.toFixed(2)},${location.lng.toFixed(2)}`;
     if (key === prevLocKeyRef.current) return;
-    prevLocKeyRef.current = key;
-
     const isFirstMount = prevLocKeyRef.current === null;
+    prevLocKeyRef.current = key;
     cursorsRef.current = [];
     usedIdsRef.current = new Set();
     radiusIdxRef.current = 0;
