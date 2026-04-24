@@ -44,8 +44,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!location) return;
     setRestaurantsLoading(true);
     setRestaurantsError(false);
-    getNearbyRestaurants(location.lat, location.lng, 20_000, 50)
-      .then((data) => { setRestaurants(data); setRestaurantsError(false); })
+
+    const { lat, lng } = location;
+
+    // Two parallel fetches with different radii — deduped and merged.
+    // Prod backend may cap per-request results at a lower number than dev,
+    // so multiple calls with increasing radii accumulate more markers.
+    Promise.all([
+      getNearbyRestaurants(lat, lng, 20_000, 200),
+      getNearbyRestaurants(lat, lng, 75_000, 200),
+    ])
+      .then(([close, far]) => {
+        const seen = new Set<string>();
+        const merged: Restaurant[] = [];
+        for (const r of [...close, ...far]) {
+          if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); }
+        }
+        setRestaurants(merged);
+        setRestaurantsError(false);
+      })
       .catch(() => { setRestaurants([]); setRestaurantsError(true); })
       .finally(() => setRestaurantsLoading(false));
   }, [location?.lat, location?.lng]);
