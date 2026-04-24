@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import { Link } from "react-router-dom";
-import { useMediaQuery } from "@mantine/hooks";
 import { Restaurant, awardStars, awardLabel, UserLocation } from "../../types";
 
 const CARTO_TILE = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
@@ -57,15 +56,11 @@ function RestaurantPopup({ r }: { r: Restaurant }) {
   const stars = awardStars(r.michelin_award);
   const label = awardLabel(r.michelin_award);
   const color = awardColor(r.michelin_award);
-  const isMobile = useMediaQuery("(max-width: 480px)");
-
-  const popupWidth = isMobile ? 160 : 220;
-  const imageHeight = isMobile ? 80 : 120;
 
   return (
-    <div style={{ width: popupWidth, fontFamily: "inherit", padding: 0, margin: 0 }}>
+    <div style={{ width: 180, fontFamily: "inherit", padding: 0, margin: 0 }}>
       {r.main_image_url && (
-        <div style={{ margin: "-12px -20px 10px", overflow: "hidden", borderRadius: "8px 8px 0 0", height: imageHeight }}>
+        <div style={{ margin: "-12px -20px 10px", overflow: "hidden", borderRadius: "8px 8px 0 0", height: 100 }}>
           <img
             src={r.main_image_url}
             alt={r.name}

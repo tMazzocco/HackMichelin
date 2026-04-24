@@ -45,6 +45,7 @@ body {
 .leaflet-popup-content-wrapper {
   border-radius: 12px;
   box-shadow: 0 4px 24px rgba(21, 3, 3, 0.15);
+  overflow: hidden;
 }
 
 .leaflet-popup-content {
