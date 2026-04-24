@@ -27,8 +27,9 @@ RUN bun x vite build
 # =============================================================================
 FROM nginx:1.27-alpine AS runner
 
-# Replace default config with our SPA-aware one
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# nginx.conf uses ${BACK_URL} which is substituted at container start.
+# Store it as a template and let the entrypoint render it.
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 # Copy the compiled assets from the builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
@@ -36,4 +37,7 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Render (and most PaaS) expects port 80
 EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+# nginx:alpine official image automatically runs envsubst on files in
+# /etc/nginx/templates/ and writes the result to /etc/nginx/conf.d/
+# before starting nginx. No custom CMD needed.
+CMD ["/docker-entrypoint.sh", "nginx", "-g", "daemon off;"]
