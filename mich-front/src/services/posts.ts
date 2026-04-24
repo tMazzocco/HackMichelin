@@ -27,7 +27,9 @@ function restaurantCoverPost(restaurant: Restaurant): Post {
 
 export async function getRandomPosts(limit = 3): Promise<Post[]> {
   const res = await api.get("/api/posts/random", { params: { limit } });
-  return (res.data as PostsResponse).data ?? res.data;
+  const payload = res.data as PostsResponse | Post[];
+  const posts = Array.isArray(payload) ? payload : (payload as PostsResponse).data;
+  return Array.isArray(posts) ? posts : [];
 }
 
 export async function getRestaurantPosts(
@@ -38,7 +40,12 @@ export async function getRestaurantPosts(
   const [postsData, restaurant] = await Promise.all([
     api.get(`/api/posts/restaurant/${restaurantId}`, {
       params: { limit, ...(before ? { before } : {}) },
-    }).then((r) => r.data as PostsResponse),
+    }).then((r) => {
+      const raw = r.data as PostsResponse | Post[];
+      return Array.isArray(raw)
+        ? { data: raw, next_before: null }
+        : { data: Array.isArray(raw.data) ? raw.data : [], next_before: raw.next_before ?? null };
+    }),
     getRestaurantById(restaurantId),
   ]);
 

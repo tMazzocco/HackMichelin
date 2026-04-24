@@ -10,7 +10,7 @@ export async function getNearbyRestaurants(
   const { data } = await api.get("/api/maps/restaurants/nearby", {
     params: { lat, lng, radius, limit },
   });
-  return data;
+  return Array.isArray(data) ? data : [];
 }
 
 export async function getRestaurantById(id: string): Promise<Restaurant> {
