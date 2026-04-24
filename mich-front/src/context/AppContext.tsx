@@ -40,21 +40,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const location = searchLocation ?? gpsLocation;
 
+  const latKey = location ? Math.round(location.lat * 100) / 100 : null;
+  const lngKey = location ? Math.round(location.lng * 100) / 100 : null;
+
   useEffect(() => {
     if (!location) return;
+    let cancelled = false;
+
     setRestaurantsLoading(true);
     setRestaurantsError(false);
 
     const { lat, lng } = location;
 
-    // Two parallel fetches with different radii — deduped and merged.
-    // Prod backend may cap per-request results at a lower number than dev,
-    // so multiple calls with increasing radii accumulate more markers.
     Promise.all([
       getNearbyRestaurants(lat, lng, 20_000, 200),
       getNearbyRestaurants(lat, lng, 75_000, 200),
     ])
       .then(([close, far]) => {
+        if (cancelled) return;
         const seen = new Set<string>();
         const merged: Restaurant[] = [];
         for (const r of [...close, ...far]) {
@@ -63,9 +66,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setRestaurants(merged);
         setRestaurantsError(false);
       })
-      .catch(() => { setRestaurants([]); setRestaurantsError(true); })
-      .finally(() => setRestaurantsLoading(false));
-  }, [location?.lat, location?.lng]);
+      .catch(() => { if (!cancelled) { setRestaurants([]); setRestaurantsError(true); } })
+      .finally(() => { if (!cancelled) setRestaurantsLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [latKey, lngKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function setProfile(p: UserProfile) {
     setProfileState(p);
