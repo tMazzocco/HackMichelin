@@ -231,7 +231,7 @@ erDiagram
 ### Access-Pattern Map
 
 ```
-posts               → O(1) lookup by post_id
+posts               → lookup by (user_id, created_at, post_id); by post_id alone needs ALLOW FILTERING
 user_posts          → profile page  : all posts by user X, newest first
 restaurant_posts    → restaurant page: all posts tagged to restaurant X
 post_likes          → who liked post X / has user Y liked it?
@@ -244,20 +244,28 @@ user_followers      → who follows user X?         (profile followers list)
 
 ### Table Details
 
-#### `posts` — partition key: `post_id`
+#### `posts` — partition: `user_id`, cluster: `created_at DESC, post_id ASC`
+
+> **Note:** live DB schema differs from `init/cassandra/init.cql`. Columns `media_id` and `rating` are absent from the live table. Use `DESCRIBE TABLE hackmichelin.posts` as the source of truth.
+
+```cql
+PRIMARY KEY (user_id, created_at, post_id)
+CLUSTERING ORDER BY (created_at DESC, post_id ASC)
+```
+
 | Column | Type | Notes |
 |---|---|---|
-| `post_id` | uuid PK | |
-| `user_id` | uuid | |
+| `user_id` | uuid (partition key) | |
+| `created_at` | timestamp (cluster) | |
+| `post_id` | uuid (cluster) | |
 | `username` | text | |
 | `restaurant_id` | text | FK → PostgreSQL `restaurants.id` |
 | `restaurant_name` | text | denormalized |
-| `media_id` | uuid | FK → PostgreSQL `media.id` |
 | `media_type` | text | `photo` \| `video` |
 | `media_url` / `thumbnail_url` | text | |
 | `caption` | text | |
-| `rating` | text | `GOOD` \| `BAD` |
-| `created_at` | timestamp | |
+
+> Lookup by `post_id` alone requires `ALLOW FILTERING` (full partition scan). To look up efficiently, always provide `user_id + created_at + post_id`.
 
 #### `user_posts` — partition: `user_id`, cluster: `created_at DESC, post_id ASC`
 | Column | Type |
